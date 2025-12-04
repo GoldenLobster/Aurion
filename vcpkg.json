@@ -1,0 +1,16 @@
+{
+  "name": "amberol",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "gtk4",
+    "libadwaita",
+    {
+      "name": "gstreamer",
+      "features": ["base", "good", "bad", "ugly"]
+    },
+    "gst-plugins-base",
+    "gst-plugins-good",
+    "gst-plugins-bad",
+    "gst-plugins-ugly"
+  ]
+}

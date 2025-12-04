@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
@@ -39,7 +39,7 @@ jobs:
         tar -czvf amberol-linux.tar.gz -C staging .
 
     - name: Upload Linux artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amberol-linux
         path: amberol-linux.tar.gz
@@ -48,7 +48,7 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
@@ -59,19 +59,13 @@ jobs:
         override: true
 
     - name: Install vcpkg
-      uses: lukka/action-vcpkg@v11
+      uses: lukka/run-vcpkg@v11
       with:
-        vcpkgJsonGlob: 'vcpkg.json' # Placeholder, project needs a vcpkg.json
+        vcpkgJsonGlob: 'vcpkg.json'
         runVcpkgInstall: true
-        # Install GTK4, Libadwaita, GStreamer and its plugins via vcpkg
-        # This will need careful crafting based on exact vcpkg package names
-        # and might require a vcpkg.json in the repo root for more control.
-        vcpkgArguments: "install gtk4 libadwaita gstreamer[base,bad,good,ugly] --recurse"
 
     - name: Setup Meson and Ninja
-      uses: egor-tensin/setup-meson@v1
-      with:
-        version: latest
+      run: pip install meson ninja
       
     - name: Configure Meson build (Windows)
       # Meson needs to find vcpkg toolchain file. lukka/action-vcpkg helps set up env vars.
@@ -90,7 +84,7 @@ jobs:
       shell: bash
 
     - name: Upload Windows artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amberol-windows
         path: amberol-windows.tar.gz
@@ -99,7 +93,7 @@ jobs:
     runs-on: macos-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
@@ -128,7 +122,7 @@ jobs:
         tar -czvf amberol-macos.tar.gz -C staging .
 
     - name: Upload macOS artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amberol-macos
         path: amberol-macos.tar.gz
@@ -139,12 +133,12 @@ jobs:
     if: github.event_name == 'release' && github.event.action == 'published'
     steps:
     - name: Download all build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           artifacts/amberol-linux/amberol-linux.tar.gz
