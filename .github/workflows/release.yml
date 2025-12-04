@@ -1,0 +1,154 @@
+name: Release CI
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+
+    - name: Install system dependencies (Linux)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y meson ninja-build libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev
+
+    - name: Configure Meson build
+      run: meson setup builddir
+
+    - name: Compile project
+      run: meson compile -C builddir
+
+    - name: Archive artifacts (Linux)
+      run: |
+        mkdir staging
+        cp builddir/src/amberol staging/
+        tar -czvf amberol-linux.tar.gz -C staging .
+
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: amberol-linux
+        path: amberol-linux.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-pc-windows-msvc # Assuming MSVC toolchain for Windows
+        profile: minimal
+        override: true
+
+    - name: Install vcpkg
+      uses: lukka/action-vcpkg@v11
+      with:
+        vcpkgJsonGlob: 'vcpkg.json' # Placeholder, project needs a vcpkg.json
+        runVcpkgInstall: true
+        # Install GTK4, Libadwaita, GStreamer and its plugins via vcpkg
+        # This will need careful crafting based on exact vcpkg package names
+        # and might require a vcpkg.json in the repo root for more control.
+        vcpkgArguments: "install gtk4 libadwaita gstreamer[base,bad,good,ugly] --recurse"
+
+    - name: Setup Meson and Ninja
+      uses: egor-tensin/setup-meson@v1
+      with:
+        version: latest
+      
+    - name: Configure Meson build (Windows)
+      # Meson needs to find vcpkg toolchain file. lukka/action-vcpkg helps set up env vars.
+      run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+      shell: bash # Use bash for meson setup to correctly interpret cross-file path
+
+    - name: Compile project (Windows)
+      run: meson compile -C builddir
+      shell: bash
+
+    - name: Archive artifacts (Windows)
+      run: |
+        mkdir staging
+        cp builddir/src/amberol.exe staging/
+        tar -czvf amberol-windows.tar.gz -C staging .
+      shell: bash
+
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: amberol-windows
+        path: amberol-windows.tar.gz
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+
+    - name: Install system dependencies (macOS)
+      run: |
+        brew update
+        # Homebrew package names might vary; these are common ones.
+        # Libadwaita might require a tap, e.g., 'brew install adwaita-template/adwaita/libadwaita'
+        brew install gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-bad gst-plugins-good gst-plugins-ugly meson ninja
+
+    - name: Configure Meson build (macOS)
+      run: meson setup builddir
+
+    - name: Compile project (macOS)
+      run: meson compile -C builddir
+
+    - name: Archive artifacts (macOS)
+      run: |
+        mkdir staging
+        cp builddir/src/amberol staging/
+        tar -czvf amberol-macos.tar.gz -C staging .
+
+    - name: Upload macOS artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: amberol-macos
+        path: amberol-macos.tar.gz
+
+  release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/amberol-linux/amberol-linux.tar.gz
+          artifacts/amberol-windows/amberol-windows.tar.gz
+          artifacts/amberol-macos/amberol-macos.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

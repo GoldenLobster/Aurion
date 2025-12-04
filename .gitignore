@@ -1,0 +1,7 @@
+*.json~
+
+src/config.rs
+
+target
+
+subprojects/blueprint-compiler
