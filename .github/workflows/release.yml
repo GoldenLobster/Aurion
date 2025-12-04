@@ -29,13 +29,21 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y meson ninja-build pkg-config
 
-    - name: Install vcpkg (Linux)
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgJsonGlob: 'vcpkg.json'
-        runVcpkgInstall: true
-        vcpkgGitURL: 'https://github.com/microsoft/vcpkg.git'
-        vcpkgGitCommitId: '5c16353d97ac9dfb33230c1e4f4b2323a67d87b1'
+    - name: Clone and bootstrap vcpkg (Linux)
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git vcpkg
+        cd vcpkg
+        git checkout 5c16353d97ac9dfb33230c1e4f4b2323a67d87b1
+        ./bootstrap-vcpkg.sh
+        cd ..
+        export VCPKG_ROOT="$PWD/vcpkg"
+        ./vcpkg/vcpkg install --triplet x64-linux
+
+    - name: Debug vcpkg and gtk4 (Linux)
+      run: |
+        echo "VCPKG_ROOT=$VCPKG_ROOT"
+        ls -la "$VCPKG_ROOT"
+        pkg-config --modversion gtk4 || true
 
     - name: Configure Meson build
       run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
@@ -72,13 +80,22 @@ jobs:
         profile: minimal
         override: true
 
-    - name: Install vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgJsonGlob: 'vcpkg.json'
-        runVcpkgInstall: true
-        vcpkgGitURL: 'https://github.com/microsoft/vcpkg.git'
-        vcpkgGitCommitId: '5c16353d97ac9dfb33230c1e4f4b2323a67d87b1'
+    - name: Clone and bootstrap vcpkg (Windows)
+      shell: powershell
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git vcpkg
+        Set-Location vcpkg
+        git checkout 5c16353d97ac9dfb33230c1e4f4b2323a67d87b1
+        .\bootstrap-vcpkg.bat
+        Set-Location ..
+        $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
+        .\vcpkg\vcpkg.exe install --triplet x64-windows
+
+    - name: Debug vcpkg (Windows)
+      shell: powershell
+      run: |
+        Write-Host "VCPKG_ROOT=$env:VCPKG_ROOT"
+        Get-ChildItem -Path $env:VCPKG_ROOT -Force
 
     - name: Setup Meson and Ninja
       run: pip install meson ninja
