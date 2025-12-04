@@ -6,11 +6,13 @@
     "libadwaita",
     {
       "name": "gstreamer",
-      "features": ["base", "good", "bad", "ugly"]
-    },
-    "gst-plugins-base",
-    "gst-plugins-good",
-    "gst-plugins-bad",
-    "gst-plugins-ugly"
-  ]
+      "features": [
+        "base",
+        "good",
+        "bad",
+        "ugly"
+      ]
+    }
+  ],
+  "builtin-baseline": "3a89e242233633914a2754e59178d0c833c82b13"
 }
