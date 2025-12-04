@@ -69,6 +69,7 @@ jobs:
       with:
         vcpkgJsonGlob: 'vcpkg.json'
         runVcpkgInstall: true
+        vcpkgCommitId: '5c16353d97ac9dfb33230c1e4f4b2323a67d87b1'
 
     - name: Setup Meson and Ninja
       run: pip install meson ninja
