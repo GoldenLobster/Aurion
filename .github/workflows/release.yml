@@ -104,11 +104,13 @@ jobs:
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-python-gobject
             mingw-w64-x86_64-appstream
+            mingw-w64-x86_64-libxml2
 
       - name: Export MSYS2 mingw64 paths
         run: |
           echo "PATH=C:\\msys64\\mingw64\\bin;${PATH}" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=C:\\msys64\\mingw64\\lib\\pkgconfig" >> $GITHUB_ENV
+          echo "GETTEXTDATADIR=C:\\msys64\\mingw64\\share\\gettext" >> $GITHUB_ENV
 
       - name: Install Rust GNU host toolchain (mingw)
         uses: actions-rs/toolchain@v1
