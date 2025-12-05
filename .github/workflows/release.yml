@@ -77,10 +77,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-    continue-on-error: true
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
-      PKG_CONFIG_PATH: ${{ github.workspace }}\vcpkg\installed\x64-windows\lib\pkgconfig;${{ github.workspace }}\vcpkg\installed\x64-windows\share\pkgconfig
+    continue-on-error: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,110 +85,62 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install Rust toolchain
+      - name: Setup MSYS2 and install dependencies (GTK4, GStreamer)
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-gtk4
+            mingw-w64-x86_64-libadwaita
+            mingw-w64-x86_64-gdk-pixbuf2
+            mingw-w64-x86_64-cairo
+            mingw-w64-x86_64-gstreamer
+            mingw-w64-x86_64-gst-plugins-base
+            mingw-w64-x86_64-gst-plugins-bad
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-ninja
+
+      - name: Export MSYS2 mingw64 paths
+        run: |
+          echo "PATH=C:\\msys64\\mingw64\\bin;${PATH}" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=C:\\msys64\\mingw64\\lib\\pkgconfig" >> $GITHUB_ENV
+
+      - name: Install Rust GNU toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: x86_64-pc-windows-msvc
+          target: x86_64-pc-windows-gnu
           profile: minimal
           override: true
 
-      - name: Clone and bootstrap vcpkg (Windows)
-        shell: powershell
+      - name: Verify GTK4 and GStreamer (Windows)
+        shell: bash
         run: |
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
-          Set-Location vcpkg
-          .\bootstrap-vcpkg.bat
-          Set-Location ..
-          # If the vcpkg ports tree contains gtk4, install ports and export env; otherwise skip vcpkg and continue with a warning.
-          if (Test-Path -Path "$PWD\vcpkg\ports\gtk4") {
-            Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$pwd\vcpkg"
-            Add-Content -Path $env:GITHUB_ENV -Value "PKG_CONFIG_PATH=$pwd\vcpkg\installed\x64-windows\lib\pkgconfig;$pwd\vcpkg\installed\x64-windows\share\pkgconfig"
-            & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic
-            if ($LASTEXITCODE -ne 0) { Start-Sleep -s 5; & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic }
-          } else {
-            Write-Host "WARNING: vcpkg does not contain a gtk4 port; skipping vcpkg install and proceeding."
-            Add-Content -Path $env:GITHUB_ENV -Value "SKIP_VCPKG=true"
-            Write-Host "Listing vcpkg/ports for debugging:"
-            Get-ChildItem -Path "$PWD\vcpkg\ports" -Force | Select-Object -First 50
-          }
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          pkg-config --modversion gtk4 || echo "gtk4 not found via pkg-config"
+          pkg-config --modversion gstreamer-1.0 || echo "gstreamer not found via pkg-config"
+          ls /mingw64/lib/pkgconfig | grep gtk4 || true
 
-      - name: Debug vcpkg (Windows)
-        shell: powershell
+      - name: Configure Meson build (Windows, mingw)
+        shell: bash
         run: |
-          Write-Host "VCPKG_ROOT=$env:VCPKG_ROOT"
-          Get-ChildItem -Path $env:VCPKG_ROOT -Force
-
-      - name: Windows toolchain diagnostics
-        shell: cmd
-        run: |
-          rustc --version -vV 2>nul || echo rustc not found
-          cargo --version 2>nul || echo cargo not found
-          where cl.exe 2>nul || echo cl.exe not found
-          where link.exe 2>nul || echo link.exe not found
-          echo --- Checking for GTK4 in MSYS2 ---
-          dir "C:\msys64\mingw64\lib\pkgconfig\gtk4.pc" 2>nul || echo gtk4.pc not found
-          echo --- Checking pkg-config paths ---
-          pkg-config --variable pc_path pkg-config 2>nul || echo pkg-config paths unavailable
-
-      - name: Setup Meson and Ninja
-        run: |
-          pip install meson ninja
-          choco install pkgconfiglite -y
-
-      - name: Install GTK4 dev packages on Windows (MSYS2)
-        shell: cmd
-        run: |
-          setlocal enabledelayedexpansion
-          echo Checking MSYS2 installation...
-          if exist "C:\msys64\msys2.exe" (
-            echo MSYS2 found, updating pacman database
-            C:\msys64\msys2.exe -defterm -no-start -here -c "pacman -Sy --noconfirm"
-            echo Installing GTK4 and related packages
-            C:\msys64\msys2.exe -defterm -no-start -here -c "pacman -S --noconfirm mingw-w64-x86_64-gtk4 mingw-w64-x86_64-libadwaita mingw-w64-x86_64-gstreamer mingw-w64-x86_64-pkg-config"
-            echo Verifying GTK4 installation
-            C:\msys64\msys2.exe -defterm -no-start -here -c "ls -la /mingw64/lib/pkgconfig/gtk4.pc"
-            echo Adding MSYS2 to PATH
-            setx PATH "C:\msys64\mingw64\bin;%PATH%"
-          ) else (
-            echo MSYS2 not found - GTK4 build on Windows will fail
-            echo Attempting minimal install via Chocolatey as fallback
-            choco install pkgconfiglite -y 2>nul || echo pkg-config install failed
-          )
-
-      - name: Configure Meson build (Windows) using Visual Studio environment if available
-        shell: cmd
-        run: |
-          setlocal enabledelayedexpansion
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2^>nul`) do (
-            set "VSINSTALL=%%i"
-            echo Found Visual Studio at !VSINSTALL!
-          )
-          if defined VSINSTALL (
-            set "VSDEV=!VSINSTALL!\Common7\Tools\VsDevCmd.bat"
-            if exist "!VSDEV!" (
-              echo Invoking meson inside VS dev environment
-              call "!VSDEV!" -arch=amd64
-              meson setup builddir
-            ) else (
-              echo VsDevCmd.bat not found, running meson setup without VS environment
-              meson setup builddir
-            )
-          ) else (
-            echo Visual Studio not found, running meson setup without VS environment
-            meson setup builddir
-          )
+          export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
+          meson setup builddir --native-file builddir/native-windows.ini || meson setup builddir
 
       - name: Compile project (Windows)
-        run: meson compile -C builddir
         shell: bash
+        run: |
+          export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
+          meson compile -C builddir
 
       - name: Archive artifacts (Windows)
-        run: |
-          mkdir staging
-          cp builddir/src/amberol.exe staging/
-          tar -czvf amberol-windows.tar.gz -C staging .
         shell: bash
+        run: |
+          mkdir -p staging
+          cp builddir/src/amberol.exe staging/ || true
+          tar -czvf amberol-windows.tar.gz -C staging . || true
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
