@@ -115,7 +115,7 @@ jobs:
           override: true
 
       - name: Verify GTK4 and GStreamer (Windows)
-        shell: bash
+        shell: msys2 {0}
         run: |
           echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
           pkg-config --modversion gtk4 || echo "gtk4 not found via pkg-config"
@@ -123,19 +123,19 @@ jobs:
           ls /mingw64/lib/pkgconfig | grep gtk4 || true
 
       - name: Configure Meson build (Windows, mingw)
-        shell: bash
+        shell: msys2 {0}
         run: |
           export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
           meson setup builddir --native-file builddir/native-windows.ini || meson setup builddir
 
       - name: Compile project (Windows)
-        shell: bash
+        shell: msys2 {0}
         run: |
           export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
           meson compile -C builddir
 
       - name: Archive artifacts (Windows)
-        shell: bash
+        shell: msys2 {0}
         run: |
           mkdir -p staging
           cp builddir/src/amberol.exe staging/ || true
