@@ -1,6 +1,9 @@
 name: Release CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   release:
     types: [published]
     
@@ -201,9 +204,42 @@ jobs:
       - name: Archive artifacts (Windows)
         shell: msys2 {0}
         run: |
-          mkdir -p staging
-          cp builddir/src/amberol.exe staging/ || true
-          tar -czvf amberol-windows.tar.gz -C staging . || true
+          STAGING_DIR="staging"
+          MINGW_BIN_DIR="/mingw64/bin"
+          mkdir -p "$STAGING_DIR"
+          
+          # Copy the main executable
+          cp builddir/src/amberol.exe "$STAGING_DIR/" || true
+          
+          # Copy essential GTK/GLib/Adwaita/GStreamer DLLs and their common dependencies.
+          # The '|| true' is added to prevent the script from failing if a specific DLL
+          # is unexpectedly not found, though ideally all listed DLLs should be present
+          # if the packages were installed correctly.
+          echo "Copying essential DLLs to staging directory..."
+          cp "$MINGW_BIN_DIR/libadwaita-1-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgdk_pixbuf-2.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgio-2.0-0.dll" "$STAGING_DIR/" || true # Corrected from libgia-2.0-0.dll
+          cp "$MINGW_BIN_DIR/libcairo-2.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgtk-4-1.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libglib-2.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgobject-2.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgmodule-2.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgthread-2.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgstreamer-1.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgstbase-1.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgstbadvideo-1.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libintl-8.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libiconv-2.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libwinpthread-1.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgcc_s_seh-1.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libstdc++-6.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/zlib1.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libpng16-16.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libjpeg-8.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libtiff-5.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libxml2-2.dll" "$STAGING_DIR/" || true
+          
+          tar -czvf amberol-windows.tar.gz -C "$STAGING_DIR" . || true
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
