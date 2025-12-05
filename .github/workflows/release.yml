@@ -29,24 +29,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y meson ninja-build pkg-config git libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev
 
-      - name: Clone and bootstrap vcpkg (Linux)
+      - name: Verify system GTK4 (Linux)
         run: |
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
-          cd vcpkg
-          ./bootstrap-vcpkg.sh
-          cd ..
-          echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$PWD/vcpkg/installed/x64-linux/lib/pkgconfig:$PWD/vcpkg/installed/x64-linux/share/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic || (sleep 5 && ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic)
-
-      - name: Debug vcpkg and gtk4 (Linux)
-        run: |
-          echo "VCPKG_ROOT=$VCPKG_ROOT"
-          ls -la "$VCPKG_ROOT"
           pkg-config --modversion gtk4 || true
 
       - name: Configure Meson build
-        run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+        run: meson setup builddir
 
       - name: Compile project
         run: meson compile -C builddir
@@ -110,40 +98,38 @@ jobs:
           Get-ChildItem -Path $env:VCPKG_ROOT -Force
 
       - name: Windows toolchain diagnostics
-        shell: powershell
+        shell: cmd
         run: |
-          rustc --version -vV || Write-Host 'rustc not found'
-          cargo --version || Write-Host 'cargo not found'
-          Write-Host '--- PATH ---'
-          Write-Host $env:PATH
-          Write-Host '--- where cl.exe ---'
-          where cl.exe || Write-Host 'cl.exe not found'
-          Write-Host '--- where link.exe ---'
-          where link.exe || Write-Host 'link.exe not found'
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          if (Test-Path $vswhere) { & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath } else { Write-Host 'vswhere not found' }
+          rustc --version -vV 2>nul || echo rustc not found
+          cargo --version 2>nul || echo cargo not found
+          where cl.exe 2>nul || echo cl.exe not found
+          where link.exe 2>nul || echo link.exe not found
 
       - name: Setup Meson and Ninja
         run: pip install meson ninja
 
       - name: Configure Meson build (Windows) using Visual Studio environment if available
-        shell: powershell
+        shell: cmd
         run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          if (Test-Path $vswhere) {
-            $inst = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-            $vsdev = Join-Path $inst "Common7\Tools\VsDevCmd.bat"
-            if (Test-Path $vsdev) {
-              Write-Host "Found VsDevCmd at $vsdev; invoking meson inside VS dev environment"
-              cmd.exe /c "`"$vsdev`" -arch=amd64 && meson setup builddir --cross-file \"$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake\""
-            } else {
-              Write-Host "VsDevCmd.bat not found at $vsdev; falling back to meson setup"
-              meson setup builddir --cross-file "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-            }
-          } else {
-            Write-Host "vswhere not found; running meson setup without VS environment"
-            meson setup builddir --cross-file "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          }
+          setlocal enabledelayedexpansion
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2^>nul`) do (
+            set "VSINSTALL=%%i"
+            echo Found Visual Studio at !VSINSTALL!
+          )
+          if defined VSINSTALL (
+            set "VSDEV=!VSINSTALL!\Common7\Tools\VsDevCmd.bat"
+            if exist "!VSDEV!" (
+              echo Invoking meson inside VS dev environment
+              call "!VSDEV!" -arch=amd64
+              meson setup builddir
+            ) else (
+              echo VsDevCmd.bat not found, running meson setup without VS environment
+              meson setup builddir
+            )
+          ) else (
+            echo Visual Studio not found, running meson setup without VS environment
+            meson setup builddir
+          )
 
       - name: Compile project (Windows)
         run: meson compile -C builddir
