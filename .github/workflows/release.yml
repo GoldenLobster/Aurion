@@ -92,7 +92,7 @@ jobs:
           install: >-
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-git
+            git
             mingw-w64-x86_64-gtk4
             mingw-w64-x86_64-libadwaita
             mingw-w64-x86_64-gdk-pixbuf2
