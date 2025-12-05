@@ -4,205 +4,189 @@ on:
   push:
     branches:
       - main
-  release:
-    types: [published]
+  name: Release CI
 
-jobs:
-  build-linux:
-    runs-on: ubuntu-24.04
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 0
+  on:
+    push:
+      branches:
+        - main
+    release:
+      types: [published]
 
-    - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        profile: minimal
-        override: true
+  jobs:
+    build-linux:
+      runs-on: ubuntu-24.04
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive
+            fetch-depth: 0
 
-    - name: Install system dependencies (Linux)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y meson ninja-build pkg-config
+        - name: Install Rust toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            toolchain: stable
+            profile: minimal
+            override: true
 
+        - name: Install system dependencies (Linux)
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y meson ninja-build pkg-config git
 
-    - name: Clone and bootstrap vcpkg (Linux)
-      run: |
-        git clone https://github.com/microsoft/vcpkg.git vcpkg
-        cd vcpkg
-        ./bootstrap-vcpkg.sh
-        cd ..
-        echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=$PWD/vcpkg/installed/x64-linux/lib/pkgconfig:$PWD/vcpkg/installed/x64-linux/share/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        # Use classic mode to avoid manifest baseline checkout issues and install required ports explicitly
-        ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic || (sleep 5 && ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic)
+        - name: Clone and bootstrap vcpkg (Linux)
+          run: |
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            cd vcpkg
+            ./bootstrap-vcpkg.sh
+            cd ..
+            echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
+            echo "PKG_CONFIG_PATH=$PWD/vcpkg/installed/x64-linux/lib/pkgconfig:$PWD/vcpkg/installed/x64-linux/share/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+            ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic || (sleep 5 && ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic)
 
-    - name: Debug vcpkg and gtk4 (Linux)
-      run: |
-        echo "VCPKG_ROOT=$VCPKG_ROOT"
-        ls -la "$VCPKG_ROOT"
-        pkg-config --modversion gtk4 || true
+        - name: Debug vcpkg and gtk4 (Linux)
+          run: |
+            echo "VCPKG_ROOT=$VCPKG_ROOT"
+            ls -la "$VCPKG_ROOT"
+            pkg-config --modversion gtk4 || true
 
-    - name: Configure Meson build
-      run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+        - name: Configure Meson build
+          run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
-    - name: Compile project
-      run: meson compile -C builddir
+        - name: Compile project
+          run: meson compile -C builddir
 
-    - name: Archive artifacts (Linux)
-      run: |
-        mkdir staging
-        cp builddir/src/amberol staging/
-        tar -czvf amberol-linux.tar.gz -C staging .
+        - name: Archive artifacts (Linux)
+          run: |
+            mkdir staging
+            cp builddir/src/amberol staging/
+            tar -czvf amberol-linux.tar.gz -C staging .
 
-    - name: Upload Linux artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: amberol-linux
-        path: amberol-linux.tar.gz
+        - name: Upload Linux artifact
+          uses: actions/upload-artifact@v4
+          with:
+            name: amberol-linux
+            path: amberol-linux.tar.gz
 
-  build-windows:
-    runs-on: windows-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 0
-
-    - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: x86_64-pc-windows-msvc # Assuming MSVC toolchain for Windows
-        profile: minimal
-        override: true
-
-  build-windows:
-    runs-on: windows-latest
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
-      PKG_CONFIG_PATH: ${{ github.workspace }}\vcpkg\installed\x64-windows\lib\pkgconfig;${{ github.workspace }}\vcpkg\installed\x64-windows\share\pkgconfig
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 0
-
-    - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: x86_64-pc-windows-msvc # Assuming MSVC toolchain for Windows
-        profile: minimal
-        override: true
-
-    - name: Clone and bootstrap vcpkg (Windows)
-      shell: powershell
-      run: |
-        git clone https://github.com/microsoft/vcpkg.git vcpkg
-        Set-Location vcpkg
-        .\bootstrap-vcpkg.bat
-        Set-Location ..
-        Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$pwd\vcpkg"
-        Add-Content -Path $env:GITHUB_ENV -Value "PKG_CONFIG_PATH=$pwd\vcpkg\installed\x64-windows\lib\pkgconfig;$pwd\vcpkg\installed\x64-windows\share\pkgconfig"
-        # Install required ports in classic mode to avoid manifest baseline checkout errors
-        & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic
-        if ($LASTEXITCODE -ne 0) { Start-Sleep -s 5; & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic }
-
-    - name: Debug vcpkg (Windows)
-      shell: powershell
-      run: |
-        Write-Host "VCPKG_ROOT=$env:VCPKG_ROOT"
-        Get-ChildItem -Path $env:VCPKG_ROOT -Force
-
-    - name: Setup Meson and Ninja
-      run: pip install meson ninja
-      
-    - name: Configure Meson build (Windows)
-      # Meson needs to find vcpkg toolchain file. lukka/action-vcpkg helps set up env vars.
-      run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-      shell: bash # Use bash for meson setup to correctly interpret cross-file path
-
-    - name: Compile project (Windows)
-      run: meson compile -C builddir
-      shell: bash
-
-    - name: Archive artifacts (Windows)
-      run: |
-        mkdir staging
-        cp builddir/src/amberol.exe staging/
-        tar -czvf amberol-windows.tar.gz -C staging .
-      shell: bash
-
-    - name: Upload Windows artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: amberol-windows
-        path: amberol-windows.tar.gz
-
-  build-macos:
-    runs-on: macos-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 0
-
-    - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        profile: minimal
-        override: true
-
-    - name: Install system dependencies (macOS)
-      run: |
-        brew update
-        # Homebrew package names might vary; these are common ones.
-        # Libadwaita might require a tap, e.g., 'brew install adwaita-template/adwaita/libadwaita'
-        brew install gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-bad gst-plugins-good gst-plugins-ugly meson ninja
-
-    - name: Configure Meson build (macOS)
-      run: meson setup builddir
-
-    - name: Compile project (macOS)
-      run: meson compile -C builddir
-
-    - name: Archive artifacts (macOS)
-      run: |
-        mkdir staging
-        cp builddir/src/amberol staging/
-        tar -czvf amberol-macos.tar.gz -C staging .
-
-    - name: Upload macOS artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: amberol-macos
-        path: amberol-macos.tar.gz
-
-  release:
-    needs: [build-linux, build-windows, build-macos]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
-    steps:
-    - name: Download all build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          artifacts/amberol-linux/amberol-linux.tar.gz
-          artifacts/amberol-windows/amberol-windows.tar.gz
-          artifacts/amberol-macos/amberol-macos.tar.gz
+    build-windows:
+      runs-on: windows-latest
       env:
+        VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+        PKG_CONFIG_PATH: ${{ github.workspace }}\vcpkg\installed\x64-windows\lib\pkgconfig;${{ github.workspace }}\vcpkg\installed\x64-windows\share\pkgconfig
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive
+            fetch-depth: 0
+
+        - name: Install Rust toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            toolchain: stable
+            target: x86_64-pc-windows-msvc
+            profile: minimal
+            override: true
+
+        - name: Clone and bootstrap vcpkg (Windows)
+          shell: powershell
+          run: |
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            Set-Location vcpkg
+            .\bootstrap-vcpkg.bat
+            Set-Location ..
+            Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$pwd\vcpkg"
+            Add-Content -Path $env:GITHUB_ENV -Value "PKG_CONFIG_PATH=$pwd\vcpkg\installed\x64-windows\lib\pkgconfig;$pwd\vcpkg\installed\x64-windows\share\pkgconfig"
+            & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic
+            if ($LASTEXITCODE -ne 0) { Start-Sleep -s 5; & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic }
+
+        - name: Debug vcpkg (Windows)
+          shell: powershell
+          run: |
+            Write-Host "VCPKG_ROOT=$env:VCPKG_ROOT"
+            Get-ChildItem -Path $env:VCPKG_ROOT -Force
+
+        - name: Setup Meson and Ninja
+          run: pip install meson ninja
+
+        - name: Configure Meson build (Windows)
+          run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          shell: bash
+
+        - name: Compile project (Windows)
+          run: meson compile -C builddir
+          shell: bash
+
+        - name: Archive artifacts (Windows)
+          run: |
+            mkdir staging
+            cp builddir/src/amberol.exe staging/
+            tar -czvf amberol-windows.tar.gz -C staging .
+          shell: bash
+
+        - name: Upload Windows artifact
+          uses: actions/upload-artifact@v4
+          with:
+            name: amberol-windows
+            path: amberol-windows.tar.gz
+
+    build-macos:
+      runs-on: macos-latest
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive
+            fetch-depth: 0
+
+        - name: Install Rust toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            toolchain: stable
+            profile: minimal
+            override: true
+
+        - name: Install system dependencies (macOS)
+          run: |
+            brew update
+            brew install gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-bad gst-plugins-good gst-plugins-ugly meson ninja
+
+        - name: Configure Meson build (macOS)
+          run: meson setup builddir
+
+        - name: Compile project (macOS)
+          run: meson compile -C builddir
+
+        - name: Archive artifacts (macOS)
+          run: |
+            mkdir staging
+            cp builddir/src/amberol staging/
+            tar -czvf amberol-macos.tar.gz -C staging .
+
+        - name: Upload macOS artifact
+          uses: actions/upload-artifact@v4
+          with:
+            name: amberol-macos
+            path: amberol-macos.tar.gz
+
+    release:
+      needs: [build-linux, build-windows, build-macos]
+      runs-on: ubuntu-latest
+      if: github.event_name == 'release' && github.event.action == 'published'
+      steps:
+        - name: Download all build artifacts
+          uses: actions/download-artifact@v4
+          with:
+            path: artifacts
+
+        - name: Create Release
+          uses: softprops/action-gh-release@v2
+          with:
+            files: |
+              artifacts/amberol-linux/amberol-linux.tar.gz
+              artifacts/amberol-windows/amberol-windows.tar.gz
+              artifacts/amberol-macos/amberol-macos.tar.gz
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
