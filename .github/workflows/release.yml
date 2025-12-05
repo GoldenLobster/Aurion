@@ -154,11 +154,11 @@ jobs:
           mkdir -p builddir
           RUSTC_PATH=$(which rustc 2>/dev/null || echo "$HOME/.cargo/bin/rustc")
           echo "[binaries]" > builddir/native-windows.ini
-          echo "c = '/mingw64/bin/x86_64-w64-mingw32-gcc'" >> builddir/native-windows.ini
-          echo "cpp = '/mingw64/bin/x86_64-w64-mingw32-g++'" >> builddir/native-windows.ini
-          echo "ar = '/mingw64/bin/x86_64-w64-mingw32-gcc-ar'" >> builddir/native-windows.ini
-          echo "strip = '/mingw64/bin/x86_64-w64-mingw32-strip'" >> builddir/native-windows.ini
-          echo "rust = '${RUSTC_PATH}'" >> builddir/native-windows.ini
+          echo "c = 'cc'" >> builddir/native-windows.ini
+          echo "cpp = 'c++'" >> builddir/native-windows.ini
+          echo "ar = 'ar'" >> builddir/native-windows.ini
+          echo "strip = 'strip'" >> builddir/native-windows.ini
+          echo "rust = 'rustc'" >> builddir/native-windows.ini
           echo "Created builddir/native-windows.ini:" 
           sed -n '1,200p' builddir/native-windows.ini || true
 
