@@ -90,10 +90,18 @@ jobs:
           Set-Location vcpkg
           .\bootstrap-vcpkg.bat
           Set-Location ..
-          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$pwd\vcpkg"
-          Add-Content -Path $env:GITHUB_ENV -Value "PKG_CONFIG_PATH=$pwd\vcpkg\installed\x64-windows\lib\pkgconfig;$pwd\vcpkg\installed\x64-windows\share\pkgconfig"
-          & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic
-          if ($LASTEXITCODE -ne 0) { Start-Sleep -s 5; & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic }
+          # If the vcpkg ports tree contains gtk4, install ports and export env; otherwise skip vcpkg and continue with a warning.
+          if (Test-Path -Path "$PWD\vcpkg\ports\gtk4") {
+            Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$pwd\vcpkg"
+            Add-Content -Path $env:GITHUB_ENV -Value "PKG_CONFIG_PATH=$pwd\vcpkg\installed\x64-windows\lib\pkgconfig;$pwd\vcpkg\installed\x64-windows\share\pkgconfig"
+            & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic
+            if ($LASTEXITCODE -ne 0) { Start-Sleep -s 5; & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic }
+          } else {
+            Write-Host "WARNING: vcpkg does not contain a gtk4 port; skipping vcpkg install and proceeding."
+            Add-Content -Path $env:GITHUB_ENV -Value "SKIP_VCPKG=true"
+            Write-Host "Listing vcpkg/ports for debugging:"
+            Get-ChildItem -Path "$PWD\vcpkg\ports" -Force | Select-Object -First 50
+          }
 
       - name: Debug vcpkg (Windows)
         shell: powershell
@@ -104,8 +112,14 @@ jobs:
       - name: Setup Meson and Ninja
         run: pip install meson ninja
 
-      - name: Configure Meson build (Windows)
+      - name: Configure Meson build (Windows) using vcpkg toolchain
+        if: env.SKIP_VCPKG != 'true' && env.VCPKG_ROOT != ''
         run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+        shell: bash
+
+      - name: Configure Meson build (Windows) without vcpkg
+        if: env.SKIP_VCPKG == 'true' || env.VCPKG_ROOT == ''
+        run: meson setup builddir
         shell: bash
 
       - name: Compile project (Windows)
