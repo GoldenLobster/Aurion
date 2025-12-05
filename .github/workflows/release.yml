@@ -132,6 +132,22 @@ jobs:
           pkg-config --modversion gstreamer-1.0 || echo "gstreamer not found via pkg-config"
           ls /mingw64/lib/pkgconfig | grep gtk4 || true
 
+      - name: Ensure rustc/rustup available inside MSYS2
+        shell: msys2 {0}
+        run: |
+          if command -v rustc >/dev/null 2>&1; then
+            echo "rustc already available"
+          else
+            echo "Installing rustup/toolchain inside MSYS2..."
+            curl https://sh.rustup.rs -sSf | sh -s -- -y
+            export PATH="$HOME/.cargo/bin:$PATH"
+            rustup toolchain install stable-x86_64-pc-windows-gnu || true
+            rustup default stable-x86_64-pc-windows-gnu || true
+          fi
+          # Persist cargo bin to subsequent steps
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
+          rustc --version || true
+
       - name: Configure Meson build (Windows, mingw)
         shell: msys2 {0}
         run: |
