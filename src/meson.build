@@ -58,11 +58,7 @@ cargo_release = custom_target(
   install: true,
   install_dir: get_option('bindir'),
   command: [
-    'env',
-    cargo_env,
-    cargo, 'build',
-    cargo_options,
-    '&&',
-    'cp', 'src' / rust_target / meson.project_name(), '@OUTPUT@',
+    'sh', '-c',
+    'env ' + ' '.join(cargo_env) + ' ' + cargo.full_path() + ' build ' + ' '.join(cargo_options) + ' && cp src/' + rust_target + '/' + meson.project_name() + ' @OUTPUT@',
   ],
 )
