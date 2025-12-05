@@ -27,16 +27,31 @@ jobs:
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config git libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gettext desktop-file-utils
+          echo "Installing GTK4 development files..."
+          sudo apt-get install -y libgtk-4-dev || {
+            echo "libgtk-4-dev installation failed, checking what's available:"
+            apt-cache search libgtk-4
+            exit 1
+          }
+          echo "Installing other dependencies..."
+          sudo apt-get install -y meson ninja-build pkg-config git libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gettext desktop-file-utils libxml2-utils
 
       - name: Verify system GTK4 (Linux)
         run: |
+          echo "=== Installed GTK packages ==="
+          dpkg -l | grep -i gtk || echo "No GTK packages found"
+          echo ""
           echo "=== Finding gtk4.pc ==="
-          find /usr -name gtk4.pc 2>/dev/null || echo "gtk4.pc not found in /usr"
-          echo "=== pkg-config search paths ==="
-          pkg-config --variable pc_path pkg-config || true
+          find /usr -name gtk4.pc 2>/dev/null || echo "gtk4.pc not found"
+          echo ""
+          echo "=== pkg-config default search paths ==="
+          pkg-config --variable pc_path pkg-config || echo "Could not get pkg-config paths"
+          echo ""
           echo "=== Trying to get GTK4 version ==="
-          pkg-config --modversion gtk4 || true
+          pkg-config --modversion gtk4 2>&1 || echo "GTK4 pkg-config not found"
+          echo ""
+          echo "=== All available .pc files ==="
+          find /usr -name "*.pc" 2>/dev/null | head -20
 
       - name: Configure Meson build
         run: meson setup builddir
