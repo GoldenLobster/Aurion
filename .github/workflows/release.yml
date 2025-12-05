@@ -36,11 +36,10 @@ jobs:
         cd vcpkg
         ./bootstrap-vcpkg.sh
         cd ..
-        export VCPKG_ROOT="$PWD/vcpkg"
-        # Install required ports explicitly to avoid relying on a specific baseline commit
-        ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux || (sleep 5 && ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux)
-        # Ensure pkg-config can find vcpkg-provided .pc files if present
-        export PKG_CONFIG_PATH="$VCPKG_ROOT/installed/x64-linux/lib/pkgconfig:$VCPKG_ROOT/installed/x64-linux/share/pkgconfig:$PKG_CONFIG_PATH"
+        echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$PWD/vcpkg/installed/x64-linux/lib/pkgconfig:$PWD/vcpkg/installed/x64-linux/share/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        # Use classic mode to avoid manifest baseline checkout issues and install required ports explicitly
+        ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic || (sleep 5 && ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux --classic)
 
     - name: Debug vcpkg and gtk4 (Linux)
       run: |
@@ -83,20 +82,25 @@ jobs:
         profile: minimal
         override: true
 
-    - name: Clone and bootstrap vcpkg (Windows)
-      shell: powershell
-      run: |
-        git clone https://github.com/microsoft/vcpkg.git vcpkg
-        Set-Location vcpkg
-        # Try fetching the baseline commit specifically, otherwise fetch all history
-        if (-not (git fetch origin 5c16353d97ac9dfb33230c1e4f4b2323a67d87b1 --depth=1)) {
-          git fetch --all
-        }
-        git checkout 5c16353d97ac9dfb33230c1e4f4b2323a67d87b1
-        .\bootstrap-vcpkg.bat
-        Set-Location ..
-        $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
-        .\vcpkg\vcpkg.exe install --triplet x64-windows -disableMetrics || (Start-Sleep -s 5; .\vcpkg\vcpkg.exe install --triplet x64-windows -disableMetrics)
+  build-windows:
+    runs-on: windows-latest
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      PKG_CONFIG_PATH: ${{ github.workspace }}\vcpkg\installed\x64-windows\lib\pkgconfig;${{ github.workspace }}\vcpkg\installed\x64-windows\share\pkgconfig
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-pc-windows-msvc # Assuming MSVC toolchain for Windows
+        profile: minimal
+        override: true
 
     - name: Clone and bootstrap vcpkg (Windows)
       shell: powershell
@@ -105,9 +109,11 @@ jobs:
         Set-Location vcpkg
         .\bootstrap-vcpkg.bat
         Set-Location ..
-        $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
-        # Install required ports explicitly; use PowerShell friendly invocation
-        & "$env:VCPKG_ROOT\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows
+        Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$pwd\vcpkg"
+        Add-Content -Path $env:GITHUB_ENV -Value "PKG_CONFIG_PATH=$pwd\vcpkg\installed\x64-windows\lib\pkgconfig;$pwd\vcpkg\installed\x64-windows\share\pkgconfig"
+        # Install required ports in classic mode to avoid manifest baseline checkout errors
+        & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic
+        if ($LASTEXITCODE -ne 0) { Start-Sleep -s 5; & "$pwd\vcpkg\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows --classic }
 
     - name: Debug vcpkg (Windows)
       shell: powershell
