@@ -27,7 +27,7 @@ jobs:
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config git libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev
+          sudo apt-get install -y meson ninja-build pkg-config git libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gettext
 
       - name: Verify system GTK4 (Linux)
         run: |
@@ -104,6 +104,10 @@ jobs:
           cargo --version 2>nul || echo cargo not found
           where cl.exe 2>nul || echo cl.exe not found
           where link.exe 2>nul || echo link.exe not found
+          echo --- Checking for GTK4 in MSYS2 ---
+          dir "C:\msys64\mingw64\lib\pkgconfig\gtk4.pc" 2>nul || echo gtk4.pc not found
+          echo --- Checking pkg-config paths ---
+          pkg-config --variable pc_path pkg-config 2>nul || echo pkg-config paths unavailable
 
       - name: Setup Meson and Ninja
         run: |
@@ -113,14 +117,16 @@ jobs:
       - name: Install GTK4 dev packages on Windows (MSYS2)
         shell: cmd
         run: |
-          if not exist "C:\msys64\msys2.exe" (
-            echo MSYS2 not found, attempting Chocolatey GTK install as fallback
-            choco install gtk3 -y 2>nul || echo GTK packages not available via Chocolatey
-          ) else (
+          setlocal enabledelayedexpansion
+          if exist "C:\msys64\msys2.exe" (
             echo Installing GTK4 via MSYS2 pacman
-            C:\msys64\msys2.exe -defterm -no-start -here -c "pacman -Sy --noconfirm mingw-w64-x86_64-gtk4 mingw-w64-x86_64-libadwaita mingw-w64-x86_64-gstreamer"
-            set "PATH=C:\msys64\mingw64\bin;%PATH%"
-            echo New PATH includes MSYS2 mingw64 bin
+            C:\msys64\msys2.exe -defterm -no-start -here -c "pacman -Sy --noconfirm mingw-w64-x86_64-gtk4 mingw-w64-x86_64-libadwaita mingw-w64-x86_64-gstreamer mingw-w64-x86_64-pkg-config"
+            echo Listing C:\msys64\mingw64\bin for gtk4 files:
+            dir "C:\msys64\mingw64\bin\*gtk*" 2>nul || echo No gtk files found
+            setx PATH "C:\msys64\mingw64\bin;C:\msys64\usr\bin;%PATH%"
+            echo PATH updated with MSYS2 paths
+          ) else (
+            echo MSYS2 not found at C:\msys64
           )
 
       - name: Configure Meson build (Windows) using Visual Studio environment if available
