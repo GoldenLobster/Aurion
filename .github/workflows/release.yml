@@ -148,6 +148,22 @@ jobs:
           echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
           rustc --version || true
 
+      - name: Create Meson native file for mingw
+        shell: msys2 {0}
+        run: |
+          mkdir -p builddir
+          RUSTC_PATH=$(which rustc 2>/dev/null || echo "$HOME/.cargo/bin/rustc")
+          cat > builddir/native-windows.ini <<'INI'
+[binaries]
+c = '/mingw64/bin/x86_64-w64-mingw32-gcc'
+cpp = '/mingw64/bin/x86_64-w64-mingw32-g++'
+ar = '/mingw64/bin/x86_64-w64-mingw32-gcc-ar'
+strip = '/mingw64/bin/x86_64-w64-mingw32-strip'
+rust = '${RUSTC_PATH}'
+INI
+          echo "Created builddir/native-windows.ini:" 
+          sed -n '1,200p' builddir/native-windows.ini || true
+
       - name: Configure Meson build (Windows, mingw)
         shell: msys2 {0}
         run: |
