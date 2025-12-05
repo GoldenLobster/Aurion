@@ -31,17 +31,22 @@ jobs:
 
       - name: Verify system GTK4 (Linux)
         run: |
+          echo "=== Finding gtk4.pc ==="
+          find /usr -name gtk4.pc 2>/dev/null || echo "gtk4.pc not found in /usr"
+          echo "=== pkg-config search paths ==="
+          pkg-config --variable pc_path pkg-config || true
+          echo "=== Trying to get GTK4 version ==="
           pkg-config --modversion gtk4 || true
 
       - name: Configure Meson build
         run: meson setup builddir
         env:
-          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig
 
       - name: Compile project
         run: meson compile -C builddir
         env:
-          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig
 
       - name: Archive artifacts (Linux)
         run: |

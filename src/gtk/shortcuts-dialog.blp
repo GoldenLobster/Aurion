@@ -4,87 +4,262 @@
 using Gtk 4.0;
 using Adw 1;
 
-Gtk.ShortcutsWindow shortcuts_dialog {
+Adw.Window shortcuts_dialog {
+    modal: true;
+    default-width: 600;
+    default-height: 500;
 
-    Gtk.ShortcutsSection {
-        title: C_("shortcut window", "General");
+    Gtk.Box {
+        orientation: vertical;
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Toggle primary menu");
-            accelerator: "F10";
-        }
+        Adw.HeaderBar {}
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Copy song details to the clipboard");
-            action-name: "win.copy";
-        }
+        Gtk.ScrolledWindow {
+            hexpand: true;
+            vexpand: true;
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Show shortcuts");
-            action-name: "app.shortcuts";
-        }
+            Gtk.Box {
+                orientation: vertical;
+                spacing: 12;
+                margin-start: 12;
+                margin-end: 12;
+                margin-top: 12;
+                margin-bottom: 12;
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Quit");
-            action-name: "app.quit";
-        }
-    }
+                Gtk.Label {
+                    label: C_("shortcut window", "General");
+                    css-classes: ["title-2"];
+                    halign: start;
+                }
 
-    Gtk.ShortcutsSection {
-        title: C_("shortcut window", "Playlist");
+                Gtk.Box {
+                    orientation: vertical;
+                    spacing: 6;
+                    margin-start: 12;
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Add a song to the playlist");
-            action-name: "queue.add-song";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: "F10";
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Toggle primary menu");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Add a folder to the playlist");
-            action-name: "queue.add-folder";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "win.copy");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Copy song details to the clipboard");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Clear the playlist");
-            action-name: "queue.clear";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "app.shortcuts");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Show shortcuts");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Toggle the playlist pane");
-            action-name: "queue.toggle";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "app.quit");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Quit");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
+                }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Toggle shuffling songs");
-            action-name: "queue.shuffle";
-        }
-    }
+                Gtk.Label {
+                    label: C_("shortcut window", "Playlist");
+                    css-classes: ["title-2"];
+                    halign: start;
+                    margin-top: 12;
+                }
 
-    Gtk.ShortcutsSection {
-        title: C_("shortcut window", "Playback");
+                Gtk.Box {
+                    orientation: vertical;
+                    spacing: 6;
+                    margin-start: 12;
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Toggle play/pause");
-            action-name: "win.play";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "queue.add-song");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Add a song to the playlist");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Previous song");
-            action-name: "win.previous";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "queue.add-folder");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Add a folder to the playlist");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Next song");
-            action-name: "win.next";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "queue.clear");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Clear the playlist");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Seek backwards in the current song");
-            action-name: "win.seek-backwards";
-        }
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "queue.toggle");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Toggle the playlist pane");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
 
-        Gtk.ShortcutsItem {
-            title: C_("shortcut window", "Seek forward in the current song");
-            action-name: "win.seek-forward";
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "queue.shuffle");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Toggle shuffling songs");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
+                }
+
+                Gtk.Label {
+                    label: C_("shortcut window", "Playback");
+                    css-classes: ["title-2"];
+                    halign: start;
+                    margin-top: 12;
+                }
+
+                Gtk.Box {
+                    orientation: vertical;
+                    spacing: 6;
+                    margin-start: 12;
+
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "win.play");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Toggle play/pause");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
+
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "win.previous");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Previous song");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
+
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "win.next");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Next song");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
+
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "win.seek-backwards");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Seek backwards in the current song");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
+
+                    Gtk.Box {
+                        spacing: 12;
+                        Gtk.Label {
+                            label: C_("shortcut window", "win.seek-forward");
+                            css-classes: ["monospace"];
+                            halign: start;
+                        }
+                        Gtk.Label {
+                            label: C_("shortcut window", "Seek forward in the current song");
+                            halign: start;
+                            hexpand: true;
+                        }
+                    }
+                }
+            }
         }
     }
 }
