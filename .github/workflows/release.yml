@@ -110,6 +110,19 @@ jobs:
           pip install meson ninja
           choco install pkgconfiglite -y
 
+      - name: Install GTK4 dev packages on Windows (MSYS2)
+        shell: cmd
+        run: |
+          if not exist "C:\msys64\msys2.exe" (
+            echo MSYS2 not found, attempting Chocolatey GTK install as fallback
+            choco install gtk3 -y 2>nul || echo GTK packages not available via Chocolatey
+          ) else (
+            echo Installing GTK4 via MSYS2 pacman
+            C:\msys64\msys2.exe -defterm -no-start -here -c "pacman -Sy --noconfirm mingw-w64-x86_64-gtk4 mingw-w64-x86_64-libadwaita mingw-w64-x86_64-gstreamer"
+            set "PATH=C:\msys64\mingw64\bin;%PATH%"
+            echo New PATH includes MSYS2 mingw64 bin
+          )
+
       - name: Configure Meson build (Windows) using Visual Studio environment if available
         shell: cmd
         run: |

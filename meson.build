@@ -9,7 +9,7 @@ project('amberol', 'rust',
 )
 
 dependency('gtk4', version: '>= 4.14', allow_fallback: true)
-dependency('libadwaita-1', version: '>= 1.8.rc', allow_fallback: true)
+dependency('libadwaita-1', version: '>= 1.5', allow_fallback: true)
 dependency('gstreamer-1.0', version: '>= 1.20', allow_fallback: true)
 dependency('gstreamer-audio-1.0', version: '>= 1.20', allow_fallback: true)
 dependency('gstreamer-play-1.0', version: '>= 1.20', allow_fallback: true)
