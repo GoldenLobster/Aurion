@@ -109,18 +109,41 @@ jobs:
           Write-Host "VCPKG_ROOT=$env:VCPKG_ROOT"
           Get-ChildItem -Path $env:VCPKG_ROOT -Force
 
+      - name: Windows toolchain diagnostics
+        shell: powershell
+        run: |
+          rustc --version -vV || Write-Host 'rustc not found'
+          cargo --version || Write-Host 'cargo not found'
+          Write-Host '--- PATH ---'
+          Write-Host $env:PATH
+          Write-Host '--- where cl.exe ---'
+          where cl.exe || Write-Host 'cl.exe not found'
+          Write-Host '--- where link.exe ---'
+          where link.exe || Write-Host 'link.exe not found'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) { & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath } else { Write-Host 'vswhere not found' }
+
       - name: Setup Meson and Ninja
         run: pip install meson ninja
 
-      - name: Configure Meson build (Windows) using vcpkg toolchain
-        if: env.SKIP_VCPKG != 'true' && env.VCPKG_ROOT != ''
-        run: meson setup builddir --cross-file "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-        shell: bash
-
-      - name: Configure Meson build (Windows) without vcpkg
-        if: env.SKIP_VCPKG == 'true' || env.VCPKG_ROOT == ''
-        run: meson setup builddir
-        shell: bash
+      - name: Configure Meson build (Windows) using Visual Studio environment if available
+        shell: powershell
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            $inst = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+            $vsdev = Join-Path $inst "Common7\Tools\VsDevCmd.bat"
+            if (Test-Path $vsdev) {
+              Write-Host "Found VsDevCmd at $vsdev; invoking meson inside VS dev environment"
+              cmd.exe /c "`"$vsdev`" -arch=amd64 && meson setup builddir --cross-file \"$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake\""
+            } else {
+              Write-Host "VsDevCmd.bat not found at $vsdev; falling back to meson setup"
+              meson setup builddir --cross-file "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            }
+          } else {
+            Write-Host "vswhere not found; running meson setup without VS environment"
+            meson setup builddir --cross-file "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          }
 
       - name: Compile project (Windows)
         run: meson compile -C builddir
