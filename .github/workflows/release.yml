@@ -138,15 +138,26 @@ jobs:
           if command -v rustc >/dev/null 2>&1; then
             echo "rustc already available"
           else
-            echo "Installing rustup/toolchain inside MSYS2..."
-            curl https://sh.rustup.rs -sSf | sh -s -- -y
-            export PATH="$HOME/.cargo/bin:$PATH"
-            rustup toolchain install stable-x86_64-pc-windows-gnu || true
-            rustup default stable-x86_64-pc-windows-gnu || true
+            echo "Attempting to install mingw-w64 Rust via pacman..."
+            pacman -Sy --noconfirm mingw-w64-x86_64-rust || true
+            if command -v rustc >/dev/null 2>&1; then
+              echo "rustc provided by pacman"
+            else
+              echo "Falling back to rustup installer inside MSYS2..."
+              curl https://sh.rustup.rs -sSf | sh -s -- -y || true
+              if [ -f "$HOME/.cargo/env" ]; then
+                # shellcheck disable=SC1091
+                . "$HOME/.cargo/env"
+              else
+                export PATH="$HOME/.cargo/bin:$PATH"
+              fi
+              rustup toolchain install stable-x86_64-pc-windows-gnu || true
+              rustup default stable-x86_64-pc-windows-gnu || true
+            fi
           fi
           # Persist cargo bin to subsequent steps
           echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
-          rustc --version || true
+          command -v rustc && rustc --version || echo "rustc not available yet"
 
       - name: Create Meson native file for mingw
         shell: msys2 {0}
