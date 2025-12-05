@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022  Emmanuele Bassi
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![cfg(any(target_os = "linux", target_os = "freebsd"))]
+
 use std::{
     cell::{OnceCell, RefCell},
     rc::Rc,

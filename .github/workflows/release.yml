@@ -108,6 +108,7 @@ jobs:
             mingw-w64-x86_64-python-gobject
             mingw-w64-x86_64-appstream
             mingw-w64-x86_64-libxml2
+            mingw-w64-x86_64-gettext
 
       - name: Export MSYS2 mingw64 paths
         run: |

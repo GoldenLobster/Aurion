@@ -10,7 +10,9 @@ use ashpd::{desktop::background::Background, WindowIdentifier};
 use async_channel::Receiver;
 use glib::clone;
 use gtk::{gio, glib, prelude::*};
-use log::{debug, warn};
+use log::debug;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use log::warn;
 
 use crate::{
     audio::AudioPlayer,

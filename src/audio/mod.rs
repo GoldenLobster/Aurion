@@ -44,9 +44,11 @@ mod cover_cache;
 pub use cover_cache::CoverCache;
 
 mod inhibit_controller;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod mpris_controller;
-pub use inhibit_controller::InhibitController;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub use mpris_controller::MprisController;
+pub use inhibit_controller::InhibitController;
 
 mod gst_backend;
 pub use gst_backend::GstBackend;
