@@ -114,6 +114,16 @@ jobs:
           profile: minimal
           override: true
 
+      - name: Expose Windows Cargo bin to MSYS2
+        shell: powershell
+        run: |
+          if (Test-Path "$Env:USERPROFILE\.cargo\bin") {
+            Add-Content -Path $Env:GITHUB_ENV -Value "PATH=$Env:USERPROFILE\\.cargo\\bin;$Env:PATH"
+            Write-Host "Exported $Env:USERPROFILE\.cargo\bin to PATH for MSYS2"
+          } else {
+            Write-Host "$Env:USERPROFILE\.cargo\bin not found; rustc may not be available in MSYS2 shell"
+          }
+
       - name: Verify GTK4 and GStreamer (Windows)
         shell: msys2 {0}
         run: |
