@@ -15,10 +15,13 @@ use log::{debug, error};
 use crate::{
     application::ApplicationAction,
     audio::{
-        Controller, CoverCache, GstBackend, InhibitController, MprisController, PlayerState, Queue,
+        Controller, CoverCache, GstBackend, InhibitController, PlayerState, Queue,
         Song, WaveformGenerator,
     },
 };
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use crate::audio::MprisController;
 
 #[derive(Clone, Debug)]
 pub enum PlaybackAction {
