@@ -29,19 +29,18 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y meson ninja-build pkg-config
 
+
     - name: Clone and bootstrap vcpkg (Linux)
       run: |
         git clone https://github.com/microsoft/vcpkg.git vcpkg
         cd vcpkg
-        # Ensure the requested baseline commit is available; try fetching it specifically, then fall back to fetching all history.
-        if ! git fetch origin 5c16353d97ac9dfb33230c1e4f4b2323a67d87b1 --depth=1; then
-          git fetch --all
-        fi
-        git checkout 5c16353d97ac9dfb33230c1e4f4b2323a67d87b1
         ./bootstrap-vcpkg.sh
         cd ..
         export VCPKG_ROOT="$PWD/vcpkg"
-        ./vcpkg/vcpkg install --triplet x64-linux || (sleep 5 && ./vcpkg/vcpkg install --triplet x64-linux)
+        # Install required ports explicitly to avoid relying on a specific baseline commit
+        ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux || (sleep 5 && ./vcpkg/vcpkg install gtk4 libadwaita "gstreamer[base,good,bad,ugly]" --triplet x64-linux)
+        # Ensure pkg-config can find vcpkg-provided .pc files if present
+        export PKG_CONFIG_PATH="$VCPKG_ROOT/installed/x64-linux/lib/pkgconfig:$VCPKG_ROOT/installed/x64-linux/share/pkgconfig:$PKG_CONFIG_PATH"
 
     - name: Debug vcpkg and gtk4 (Linux)
       run: |
@@ -98,6 +97,17 @@ jobs:
         Set-Location ..
         $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
         .\vcpkg\vcpkg.exe install --triplet x64-windows -disableMetrics || (Start-Sleep -s 5; .\vcpkg\vcpkg.exe install --triplet x64-windows -disableMetrics)
+
+    - name: Clone and bootstrap vcpkg (Windows)
+      shell: powershell
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git vcpkg
+        Set-Location vcpkg
+        .\bootstrap-vcpkg.bat
+        Set-Location ..
+        $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
+        # Install required ports explicitly; use PowerShell friendly invocation
+        & "$env:VCPKG_ROOT\vcpkg.exe" install 'gtk4' 'libadwaita' 'gstreamer[base,good,bad,ugly]' --triplet x64-windows
 
     - name: Debug vcpkg (Windows)
       shell: powershell
