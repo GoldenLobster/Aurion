@@ -269,9 +269,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ github.token }}
           files: |
             artifacts/amberol-linux/amberol-linux.tar.gz
             artifacts/amberol-windows/amberol-windows.tar.gz
             artifacts/amberol-macos/amberol-macos.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
