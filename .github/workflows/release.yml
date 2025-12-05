@@ -106,7 +106,9 @@ jobs:
           where link.exe 2>nul || echo link.exe not found
 
       - name: Setup Meson and Ninja
-        run: pip install meson ninja
+        run: |
+          pip install meson ninja
+          choco install pkgconfiglite -y
 
       - name: Configure Meson build (Windows) using Visual Studio environment if available
         shell: cmd
