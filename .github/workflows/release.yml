@@ -27,7 +27,7 @@ jobs:
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config git
+          sudo apt-get install -y meson ninja-build pkg-config git libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev
 
       - name: Clone and bootstrap vcpkg (Linux)
         run: |
