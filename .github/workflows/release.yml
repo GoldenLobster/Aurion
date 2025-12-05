@@ -6,6 +6,9 @@ on:
       - main
   release:
     types: [published]
+    
+permissions:
+  contents: write
 
 jobs:
   build-linux:
