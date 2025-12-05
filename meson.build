@@ -25,8 +25,12 @@ cargo = find_program('cargo', required: true)
 
 cargo_sources = files(
   'Cargo.toml',
-  'Cargo.lock',
 )
+
+# Cargo.lock is optional - will be generated if missing
+if fs.is_file('Cargo.lock')
+  cargo_sources += files('Cargo.lock')
+endif
 
 if get_option('profile') == 'development'
   profile = '.Devel'

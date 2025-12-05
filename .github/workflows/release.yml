@@ -53,6 +53,9 @@ jobs:
           echo "=== All available .pc files ==="
           find /usr -name "*.pc" 2>/dev/null | head -20
 
+      - name: Generate Cargo.lock (Linux)
+        run: cargo generate-lockfile
+
       - name: Configure Meson build
         run: meson setup builddir
         env:
@@ -178,6 +181,10 @@ jobs:
           echo "Created builddir/native-windows.ini:" 
           sed -n '1,200p' builddir/native-windows.ini || true
 
+      - name: Generate Cargo.lock (Windows)
+        shell: msys2 {0}
+        run: cargo generate-lockfile
+
       - name: Configure Meson build (Windows, mingw)
         shell: msys2 {0}
         run: |
@@ -223,6 +230,9 @@ jobs:
         run: |
           brew update
           brew install gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-bad gst-plugins-good gst-plugins-ugly meson ninja
+
+      - name: Generate Cargo.lock (macOS)
+        run: cargo generate-lockfile
 
       - name: Configure Meson build (macOS)
         run: meson setup builddir
