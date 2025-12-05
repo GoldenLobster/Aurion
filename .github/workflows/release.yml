@@ -228,6 +228,10 @@ jobs:
           cp "$MINGW_BIN_DIR/libgstreamer-1.0-0.dll" "$STAGING_DIR/" || true
           cp "$MINGW_BIN_DIR/libgstbase-1.0-0.dll" "$STAGING_DIR/" || true
           cp "$MINGW_BIN_DIR/libgstbadvideo-1.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgstaudio-1.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgstplay-1.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgstvideo-1.0-0.dll" "$STAGING_DIR/" || true
+          cp "$MINGW_BIN_DIR/libgraphene-1.0-0.dll" "$STAGING_DIR/" || true
           cp "$MINGW_BIN_DIR/libintl-8.dll" "$STAGING_DIR/" || true
           cp "$MINGW_BIN_DIR/libiconv-2.dll" "$STAGING_DIR/" || true
           cp "$MINGW_BIN_DIR/libwinpthread-1.dll" "$STAGING_DIR/" || true
