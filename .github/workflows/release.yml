@@ -215,6 +215,11 @@ jobs:
           echo "Copying all DLLs to staging directory..."
           cp "$MINGW_BIN_DIR"/*.dll "$STAGING_DIR/" || true
           
+          # Copy resource file if it exists
+          if [ -f builddir/share/amberol/amberol.gresource ]; then
+            mkdir -p "$STAGING_DIR/share/amberol"
+            cp builddir/share/amberol/amberol.gresource "$STAGING_DIR/share/amberol/"
+          fi
           tar -czvf amberol-windows.tar.gz -C "$STAGING_DIR" . || true
 
       - name: Upload Windows artifact
