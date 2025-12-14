@@ -1,13 +1,11 @@
-on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
-  pull_request:
-  release:
-    types: [published]
+name: Release
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
 
 jobs:
   linux:
@@ -24,16 +22,16 @@ jobs:
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev \
             libgstreamer-plugins-bad1.0-dev \
-            blueprint-compiler appstream-util desktop-file-utils
+            blueprint-compiler appstream desktop-file-utils gettext
 
-      - name: Build
+      - name: Build (Linux)
         run: |
           cargo generate-lockfile
           meson setup builddir
           meson compile -C builddir
           meson install -C builddir --destdir install
 
-      - name: Upload artifact
+      - name: Upload artifact (Linux)
         uses: actions/upload-artifact@v4
         with:
           name: amberol-linux
@@ -47,16 +45,16 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install meson ninja pkg-config rust gtk4 libadwaita gstreamer blueprint-compiler appstream
+          brew install meson ninja pkg-config rust gtk4 libadwaita gstreamer blueprint-compiler appstream gettext
 
-      - name: Build
+      - name: Build (macOS)
         run: |
           cargo generate-lockfile
           meson setup builddir
           meson compile -C builddir
           meson install -C builddir --destdir install
 
-      - name: Upload artifact
+      - name: Upload artifact (macOS)
         uses: actions/upload-artifact@v4
         with:
           name: amberol-macos
@@ -76,7 +74,7 @@ jobs:
         with:
           msystem: MINGW64
           update: true
-          install: >
+          install: >-
             git
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-rust
@@ -90,27 +88,34 @@ jobs:
             mingw-w64-x86_64-gst-plugins-bad
             mingw-w64-x86_64-gst-plugins-ugly
             mingw-w64-x86_64-blueprint-compiler
-            mingw-w64-x86_64-appstream-glib
             mingw-w64-x86_64-desktop-file-utils
-            mingw-w64-x86_64-appstream
             mingw-w64-x86_64-gettext
+            mingw-w64-x86_64-appstream
 
-      - name: Build
+      - name: Build (Windows)
         env:
           PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
         run: |
           cargo generate-lockfile
           meson setup builddir --prefix=/mingw64
           meson compile -C builddir
-          meson install -C builddir --destdir install
 
-      - name: Bundle runtime DLLs
+      - name: Package (Windows)
         run: |
           mkdir -p artifact/bin
-          cp install/mingw64/bin/*.exe artifact/bin/
-          ldd artifact/bin/*.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/bin/
+          mkdir -p artifact/share
 
-      - name: Upload artifact
+          # Binary
+          cp builddir/src/amberol.exe artifact/bin/
+
+          # Resources
+          cp builddir/src/amberol.gresource artifact/share/ || true
+          cp -r data artifact/share/ || true
+
+          # Bundle runtime DLLs
+          ldd artifact/bin/amberol.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/bin/
+
+      - name: Upload artifact (Windows)
         uses: actions/upload-artifact@v4
         with:
           name: amberol-windows
