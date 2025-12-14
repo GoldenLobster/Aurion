@@ -78,7 +78,7 @@ jobs:
 
       - name: Upload release artifact
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: amberol-${{ runner.os }}
           path: builddir/install/*.zip
