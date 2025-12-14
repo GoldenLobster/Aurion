@@ -3,128 +3,53 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
-  workflow_dispatch:
+      - 'v*.*.*'  # Trigger on version tags like v1.0.0
+  workflow_dispatch:  # Allow manual triggering
 
 jobs:
-  build-linux:
-    name: Build Linux
-    runs-on: ubuntu-latest
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+      - name: Set up Rust
+        uses: actions/setup-rust@v1
         with:
-          toolchain: stable
-          override: true
+          rust-version: stable
 
-      - name: Install Linux dependencies
+      - name: Install dependencies
+        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
-          sudo apt update
-          sudo apt install -y meson ninja-build gettext pkg-config libgtk-4-dev libadwaita-1-dev
+          sudo apt-get update || brew update
+          sudo apt-get install -y ninja-build meson gettext libglib2.0-dev libgtk-4-dev libadwaita-1-dev
 
-      - name: Build with Cargo
+      - name: Install dependencies on Windows
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y meson ninja gettext
+
+      - name: Build Rust project
         run: cargo build --release
 
-      - name: Build resources
+      - name: Build Meson resources
         run: |
-          mkdir -p builddir
-          meson setup builddir --buildtype release
+          meson setup builddir || meson configure builddir
           meson compile -C builddir
 
-      - name: Package
+      - name: Copy gresource to target
         run: |
-          mkdir -p release
-          cp target/release/amberol release/
-          cp src/amberol.gresource release/
-          cp -r data release/
-          tar czf amberol-linux.tar.gz -C release .
+          mkdir -p target/release
+          cp builddir/src/amberol.gresource target/release/amberol.gresource
+        shell: bash
 
-      - name: Upload artifact
+      - name: Package artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: amberol-linux
-          path: amberol-linux.tar.gz
-
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Install Windows dependencies
-        run: |
-          choco install meson -y
-          choco install ninja -y
-          choco install gtk4 -y
-          choco install pkgconfiglite -y
-
-      - name: Build with Cargo
-        run: cargo build --release
-
-      - name: Build resources
-        run: |
-          mkdir builddir
-          meson setup builddir --buildtype release
-          meson compile -C builddir
-
-      - name: Package
-        run: |
-          mkdir release
-          copy target\release\amberol.exe release\
-          copy src\amberol.gresource release\
-          xcopy /E /I data release\data
-          powershell Compress-Archive -Path release\* -DestinationPath amberol-windows.zip
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: amberol-windows
-          path: amberol-windows.zip
-
-  build-macos:
-    name: Build macOS
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Install macOS dependencies
-        run: |
-          brew update
-          brew install meson ninja gettext gtk4 libadwaita
-
-      - name: Build with Cargo
-        run: cargo build --release
-
-      - name: Build resources
-        run: |
-          mkdir -p builddir
-          meson setup builddir --buildtype release
-          meson compile -C builddir
-
-      - name: Package
-        run: |
-          mkdir -p release
-          cp target/release/amberol release/
-          cp src/amberol.gresource release/
-          cp -r data release/
-          tar czf amberol-macos.tar.gz -C release .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: amberol-macos
-          path: amberol-macos.tar.gz
+          name: amberol-${{ matrix.os }}
+          path: target/release/
