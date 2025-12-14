@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 jobs:
   build:
-    name: Build Amberol (${{ matrix.os }}, Rust ${{ matrix.rust }})
+    name: Build Amberol
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -19,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -28,14 +27,12 @@ jobs:
           profile: minimal
           override: true
 
-      - name: Print Rust version
-        run: rustc --version
-
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y meson ninja-build pkg-config \
+          sudo apt install -y \
+            meson ninja-build pkg-config \
             libgtk-4-dev libadwaita-1-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-good gstreamer1.0-tools gettext
@@ -44,26 +41,33 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install meson ninja pkg-config gtk4 libadwaita \
-            gstreamer gst-plugins-base gst-plugins-good gettext
+          brew install meson ninja pkg-config gtk4 libadwaita gstreamer gst-plugins-good gettext
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install meson ninja pkgconfiglite gtk4 gstreamer gettext -y
-          refreshenv
+          choco install -y meson ninja pkgconfiglite gtk4 gstreamer gstreamer-plugins-good gettext
+
+      - name: Set up environment for Meson (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
 
       - name: Configure Meson build
         run: meson setup builddir
 
-      - name: Build project
-        run: meson compile -C builddir
+      - name: Build Amberol
+        run: ninja -C builddir
 
-      - name: Install project
-        run: meson install -C builddir
+      - name: Install Amberol
+        run: ninja -C builddir install
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: amberol-${{ matrix.os }}
-          path: builddir/install
+          path: |
+            builddir/amberol
+            builddir/*.desktop
+            builddir/*.metainfo.xml
+            builddir/*.gresource
