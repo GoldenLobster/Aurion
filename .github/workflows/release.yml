@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: actions/setup-rust@v2
+        uses: rust-lang/setup-rust@v2
         with:
           rust-version: ${{ matrix.rust }}
 
@@ -63,9 +63,19 @@ jobs:
       - name: Install project
         run: meson install -C builddir
 
+      - name: Collect runtime files
+        run: |
+          mkdir -p release
+          # Copy executable
+          cp -r builddir/install/bin release/ || cp -r builddir/install/a/_temp/msys64/mingw64/bin release/
+          # Copy gresource
+          cp -r builddir/install/share/amberol/amberol.gresource release/
+          # Copy metainfo and desktop (Linux/macOS)
+          cp -r builddir/install/share/metainfo release/ || true
+          cp -r builddir/install/share/applications release/ || true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: amberol-${{ runner.os }}
-          path: |
-            builddir/install
+          path: release/
