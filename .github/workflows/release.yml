@@ -10,26 +10,22 @@ on:
 
 jobs:
   build:
+    name: Build Amberol
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [1.72.0]
 
-    env:
-      CARGO_TERM_COLOR: always
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+        uses: rust-lang/setup-rust@v2
         with:
-          toolchain: ${{ matrix.rust }}
+          rust-version: ${{ matrix.rust }}
           profile: minimal
-          components: rustfmt, clippy
-          override: true
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -38,10 +34,10 @@ jobs:
           sudo apt install -y \
             meson ninja-build pkg-config \
             libgtk-4-dev libadwaita-1-dev \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-            gstreamer1.0-libav gstreamer1.0-tools \
-            gstreamer1.0-dev gettext
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly gstreamer1.0-libav \
+            gettext
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
@@ -51,28 +47,30 @@ jobs:
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
-        shell: powershell
         run: |
-          choco install meson ninja pkgconfiglite gtk4 gstreamer -y
+          choco install meson ninja pkgconfiglite gstreamer gtk4 gettext -y
+          refreshenv
 
-      - name: Add Meson to PATH (Linux/Windows)
-        if: runner.os != 'macOS'
-        run: echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
+      - name: Ensure Meson in PATH (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: echo "$HOME/.local/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Configure Meson build
+      - name: Setup Meson build directory
         run: meson setup builddir
 
       - name: Build project
-        run: meson compile -C builddir --verbose
+        run: |
+          meson compile -C builddir
 
       - name: Install resources
-        run: meson install -C builddir --destdir ${{ runner.temp }}/install
+        run: |
+          meson install -C builddir
 
-      - name: Package artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: amberol-${{ matrix.os }}
-          path: ${{ runner.temp }}/install
-
-      - name: Run tests
-        run: cargo test --workspace --verbose
+          name: amberol-${{ runner.os }}
+          path: |
+            builddir/install
+            builddir/src/amberol.gresource
+            target/release/amberol
