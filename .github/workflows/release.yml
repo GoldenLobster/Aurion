@@ -1,142 +1,75 @@
 name: Release
 
 on:
-  workflow_dispatch:
   push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
+  build:
+    name: Build for all platforms
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            meson ninja-build pkg-config rustc cargo \
-            libgtk-4-dev libadwaita-1-dev \
-            libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev \
-            libgstreamer-plugins-bad1.0-dev \
-            blueprint-compiler appstream desktop-file-utils gettext
-
-      - name: Build (Linux)
-        run: |
-          cargo generate-lockfile
-          meson setup builddir
-          meson compile -C builddir
-          meson install -C builddir --destdir install
-
-      - name: Upload artifact (Linux)
-        uses: actions/upload-artifact@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
         with:
-          name: amberol-linux
-          path: install
+          toolchain: stable
+          override: true
 
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y meson ninja-build gettext pkg-config libgtk-4-dev libadwaita-1-dev
 
-      - name: Install dependencies
+      - name: Install build dependencies
+        if: runner.os == 'macOS'
         run: |
           brew update
-          brew install meson ninja pkg-config rust gtk4 libadwaita gstreamer blueprint-compiler appstream gettext
+          brew install meson ninja gettext gtk4 libadwaita
 
-      - name: Build (macOS)
+      - name: Install build dependencies
+        if: runner.os == 'Windows'
         run: |
-          cargo generate-lockfile
-          meson setup builddir
-          meson compile -C builddir
-          meson install -C builddir --destdir install
+          choco install meson -y
+          choco install ninja -y
+          choco install gtk4 -y
+          choco install pkgconfiglite -y
 
-      - name: Upload artifact (macOS)
-        uses: actions/upload-artifact@v4
-        with:
-          name: amberol-macos
-          path: install
-
-  windows:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            git
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-rust
-            mingw-w64-x86_64-meson
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-gtk4
-            mingw-w64-x86_64-libadwaita
-            mingw-w64-x86_64-gstreamer
-            mingw-w64-x86_64-gst-plugins-base
-            mingw-w64-x86_64-gst-plugins-good
-            mingw-w64-x86_64-gst-plugins-bad
-            mingw-w64-x86_64-gst-plugins-ugly
-            mingw-w64-x86_64-blueprint-compiler
-            mingw-w64-x86_64-desktop-file-utils
-            mingw-w64-x86_64-gettext
-            mingw-w64-x86_64-appstream
-
-      - name: Build (Windows)
-        env:
-          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
+      - name: Build project
         run: |
-          cargo generate-lockfile
-          meson setup builddir --prefix=/mingw64
+          mkdir -p builddir
+          meson setup builddir --buildtype release
           meson compile -C builddir
 
-      - name: Package (Windows)
+      - name: Copy required resources
         run: |
-          mkdir -p artifact/mingw64/bin
-          mkdir -p artifact/mingw64/share/amberol
-          mkdir -p artifact/mingw64/share/applications
-          mkdir -p artifact/mingw64/share/metainfo
+          mkdir -p builddir/install/share/amberol
+          cp src/amberol.gresource builddir/install/share/amberol/amberol.gresource || echo "amberol.gresource not found yet"
+          cp -r data/* builddir/install/share/amberol/
 
-          # Binary
-          cp builddir/src/amberol.exe artifact/mingw64/bin/
-
-          # GResource (this is what the app panics on if missing)
-          cp builddir/src/amberol.gresource artifact/mingw64/share/amberol/
-
-          # Desktop + metainfo files
-          cp data/*.desktop artifact/mingw64/share/applications/ || true
-          cp data/*.metainfo.xml artifact/mingw64/share/metainfo/ || true
-
-          # Bundle runtime DLLs
-          ldd artifact/mingw64/bin/amberol.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/mingw64/bin/
-
+      - name: Package artifacts
         run: |
-          mkdir -p artifact/mingw64/bin
-          mkdir -p artifact/mingw64/share
+          mkdir -p release
+          tar czf release/amberol-${{ matrix.os }}.tar.gz -C builddir/install/share amberol
 
-          # Binary
-          cp builddir/src/amberol.exe artifact/mingw64/bin/
-
-          # Resources installed by Meson (must match prefix)
-          if [ -d builddir/install/mingw64/share ]; then
-            cp -r builddir/install/mingw64/share/* artifact/mingw64/share/
-          fi
-
-          # Bundle runtime DLLs
-          ldd artifact/mingw64/bin/amberol.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/mingw64/bin/
-
-      - name: Upload artifact (Windows)
-        uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
         with:
-          name: amberol-windows
-          path: artifact
+          name: amberol-${{ matrix.os }}
+          path: release/
