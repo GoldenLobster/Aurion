@@ -1,68 +1,113 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable]
-    runs-on: ${{ matrix.os }}
-    name: Build Amberol (${{ matrix.os }}, Rust ${{ matrix.rust }})
-
+  linux:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
-          components: clippy,rustfmt
-
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y \
-            meson ninja-build pkg-config \
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson ninja-build pkg-config rustc cargo \
             libgtk-4-dev libadwaita-1-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-tools \
-            gettext
-
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            blueprint-compiler appstream desktop-file-utils gettext
+      - name: Build (Linux)
         run: |
-          brew update
-          brew install meson ninja pkg-config gtk4 libadwaita \
-                       gstreamer gst-plugins-base gst-plugins-good gettext
-
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install -y meson ninja pkgconfiglite gtk4 gstreamer gstreamer-plugins-good gettext
-
-      - name: Create build directory
-        run: meson setup builddir
-
-      - name: Build Amberol
-        run: meson compile -C builddir
-
-      - name: Install Amberol
-        run: meson install -C builddir
-
-      - name: Package artifacts
+          cargo generate-lockfile
+          meson setup builddir
+          meson compile -C builddir
+          meson install -C builddir --destdir install
+      - name: Upload artifact (Linux)
         uses: actions/upload-artifact@v4
         with:
-          name: amberol-${{ matrix.os }}
-          path: builddir/install
+          name: amberol-linux
+          path: install
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install meson ninja pkg-config rust gtk4 libadwaita gstreamer blueprint-compiler appstream gettext
+      - name: Build (macOS)
+        run: |
+          cargo generate-lockfile
+          meson setup builddir
+          meson compile -C builddir
+          meson install -C builddir --destdir install
+      - name: Upload artifact (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: amberol-macos
+          path: install
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-rust
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-gtk4
+            mingw-w64-x86_64-libadwaita
+            mingw-w64-x86_64-gstreamer
+            mingw-w64-x86_64-gst-plugins-base
+            mingw-w64-x86_64-gst-plugins-good
+            mingw-w64-x86_64-gst-plugins-bad
+            mingw-w64-x86_64-gst-plugins-ugly
+            mingw-w64-x86_64-blueprint-compiler
+            mingw-w64-x86_64-desktop-file-utils
+            mingw-w64-x86_64-gettext
+            mingw-w64-x86_64-appstream
+      - name: Build (Windows)
+        env:
+          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
+        run: |
+          cargo generate-lockfile
+          meson setup builddir --prefix=/mingw64
+          meson compile -C builddir
+      - name: Package (Windows)
+        run: |
+          mkdir -p artifact/mingw64/bin
+          mkdir -p artifact/mingw64/share
+          # Binary
+          cp builddir/src/amberol.exe artifact/mingw64/bin/
+          # Resources installed by Meson (must match prefix)
+          if [ -d builddir/install/mingw64/share ]; then
+            cp -r builddir/install/mingw64/share/* artifact/mingw64/share/
+          fi
+          # Bundle runtime DLLs
+          ldd artifact/mingw64/bin/amberol.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/mingw64/bin/
+      - name: Upload artifact (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: amberol-windows
+          path: artifact
