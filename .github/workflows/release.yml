@@ -35,7 +35,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y meson ninja-build pkg-config libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev gettext
+          sudo apt install -y \
+            meson ninja-build pkg-config \
+            libgtk-4-dev libadwaita-1-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav gstreamer1.0-tools \
+            gstreamer1.0-dev gettext
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
