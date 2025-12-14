@@ -6,7 +6,7 @@ on:
   pull_request:
   release:
     types: [published]
-    
+
 permissions:
   contents: write
 
@@ -14,216 +14,104 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           override: true
 
-      - name: Install system dependencies (Linux)
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          echo "Installing GTK4 development files..."
-          sudo apt-get install -y libgtk-4-dev || {
-            echo "libgtk-4-dev installation failed, checking what's available:"
-            apt-cache search libgtk-4
-            exit 1
-          }
-          echo "Installing other dependencies..."
-          sudo apt-get install -y meson ninja-build pkg-config git libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gettext desktop-file-utils libxml2-utils
+          sudo apt-get install -y \
+            meson ninja-build pkg-config git \
+            libgtk-4-dev libadwaita-1-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            gettext desktop-file-utils libxml2-utils
 
-      - name: Verify system GTK4 (Linux)
-        run: |
-          echo "=== Installed GTK packages ==="
-          dpkg -l | grep -i gtk || echo "No GTK packages found"
-          echo ""
-          echo "=== Finding gtk4.pc ==="
-          find /usr -name gtk4.pc 2>/dev/null || echo "gtk4.pc not found"
-          echo ""
-          echo "=== pkg-config default search paths ==="
-          pkg-config --variable pc_path pkg-config || echo "Could not get pkg-config paths"
-          echo ""
-          echo "=== Trying to get GTK4 version ==="
-          pkg-config --modversion gtk4 2>&1 || echo "GTK4 pkg-config not found"
-          echo ""
-          echo "=== All available .pc files ==="
-          find /usr -name "*.pc" 2>/dev/null | head -20
+      - run: cargo generate-lockfile
 
-      - name: Generate Cargo.lock (Linux)
-        run: cargo generate-lockfile
-
-      - name: Configure Meson build
+      - name: Configure
         run: meson setup builddir
-        env:
-          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig
 
-      - name: Compile project
+      - name: Build
         run: meson compile -C builddir
-        env:
-          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/usr/lib/pkgconfig
 
-      - name: Archive artifacts (Linux)
+      - name: Install
+        run: meson install -C builddir --destdir install
+
+      - name: Package
         run: |
-          mkdir staging
-          cp builddir/src/amberol staging/
+          mkdir -p staging
+          cp -r install/usr/* staging/
           tar -czvf amberol-linux.tar.gz -C staging .
 
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: amberol-linux
           path: amberol-linux.tar.gz
 
   build-windows:
     runs-on: windows-latest
-    continue-on-error: false
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Setup MSYS2 and install dependencies (GTK4, GStreamer)
-        uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@v2
         with:
+          msystem: MINGW64
           update: true
           install: >-
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-pkg-config
-            git
             mingw-w64-x86_64-gtk4
             mingw-w64-x86_64-libadwaita
-            mingw-w64-x86_64-gdk-pixbuf2
-            mingw-w64-x86_64-cairo
             mingw-w64-x86_64-gstreamer
             mingw-w64-x86_64-gst-plugins-base
             mingw-w64-x86_64-gst-plugins-bad
             mingw-w64-x86_64-meson
             mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-python-gobject
-            mingw-w64-x86_64-appstream
-            mingw-w64-x86_64-libxml2
             mingw-w64-x86_64-gettext
+            mingw-w64-x86_64-libxml2
 
-      - name: Export MSYS2 mingw64 paths
-        run: |
-          echo "PATH=C:\\msys64\\mingw64\\bin;${PATH}" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=C:\\msys64\\mingw64\\lib\\pkgconfig" >> $GITHUB_ENV
-          echo "GETTEXTDATADIR=C:\\msys64\\mingw64\\share\\gettext" >> $GITHUB_ENV
-
-      - name: Install Rust GNU host toolchain (mingw)
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable-x86_64-pc-windows-gnu
           profile: minimal
           override: true
 
-      - name: Expose Windows Cargo bin to MSYS2
-        shell: powershell
-        run: |
-          if (Test-Path "$Env:USERPROFILE\.cargo\bin") {
-            Add-Content -Path $Env:GITHUB_ENV -Value "PATH=$Env:USERPROFILE\\.cargo\\bin;$Env:PATH"
-            Write-Host "Exported $Env:USERPROFILE\.cargo\bin to PATH for MSYS2"
-          } else {
-            Write-Host "$Env:USERPROFILE\.cargo\bin not found; rustc may not be available in MSYS2 shell"
-          }
-
-      - name: Verify GTK4 and GStreamer (Windows)
-        shell: msys2 {0}
-        run: |
-          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-          pkg-config --modversion gtk4 || echo "gtk4 not found via pkg-config"
-          pkg-config --modversion gstreamer-1.0 || echo "gstreamer not found via pkg-config"
-          ls /mingw64/lib/pkgconfig | grep gtk4 || true
-
-      - name: Ensure rustc/rustup available inside MSYS2
-        shell: msys2 {0}
-        run: |
-          if command -v rustc >/dev/null 2>&1; then
-            echo "rustc already available"
-          else
-            echo "Attempting to install mingw-w64 Rust via pacman..."
-            pacman -Sy --noconfirm mingw-w64-x86_64-rust || true
-            if command -v rustc >/dev/null 2>&1; then
-              echo "rustc provided by pacman"
-            else
-              echo "Falling back to rustup installer inside MSYS2..."
-              curl https://sh.rustup.rs -sSf | sh -s -- -y || true
-              if [ -f "$HOME/.cargo/env" ]; then
-                # shellcheck disable=SC1091
-                . "$HOME/.cargo/env"
-              else
-                export PATH="$HOME/.cargo/bin:$PATH"
-              fi
-              rustup toolchain install stable-x86_64-pc-windows-gnu || true
-              rustup default stable-x86_64-pc-windows-gnu || true
-            fi
-          fi
-          # Persist cargo bin to subsequent steps
-          echo "PATH=$HOME/.cargo/bin:$PATH" >> $GITHUB_ENV
-          command -v rustc && rustc --version || echo "rustc not available yet"
-
-      - name: Create Meson native file for mingw
-        shell: msys2 {0}
-        run: |
-          mkdir -p builddir
-          RUSTC_PATH=$(which rustc 2>/dev/null || echo "$HOME/.cargo/bin/rustc")
-          echo "[binaries]" > builddir/native-windows.ini
-          echo "c = 'cc'" >> builddir/native-windows.ini
-          echo "cpp = 'c++'" >> builddir/native-windows.ini
-          echo "ar = 'ar'" >> builddir/native-windows.ini
-          echo "strip = 'strip'" >> builddir/native-windows.ini
-          echo "rust = 'rustc'" >> builddir/native-windows.ini
-          echo "Created builddir/native-windows.ini:" 
-          sed -n '1,200p' builddir/native-windows.ini || true
-
-      - name: Generate Cargo.lock (Windows)
-        shell: msys2 {0}
-        run: cargo generate-lockfile
-
-      - name: Configure Meson build (Windows, mingw)
+      - name: Build (MSYS2)
         shell: msys2 {0}
         run: |
           export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
-          meson setup builddir --native-file builddir/native-windows.ini || meson setup builddir
-
-      - name: Compile project (Windows)
-        shell: msys2 {0}
-        run: |
-          export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
+          cargo generate-lockfile
+          meson setup builddir
           meson compile -C builddir
+          meson install -C builddir --destdir install
 
-      - name: Archive artifacts (Windows)
+      - name: Bundle GTK runtime
         shell: msys2 {0}
         run: |
-          STAGING_DIR="staging"
-          MINGW_BIN_DIR="/mingw64/bin"
-          mkdir -p "$STAGING_DIR"
-          
-          # Copy the main executable
-          cp builddir/src/amberol.exe "$STAGING_DIR/" || true
-          
-          # Copy all DLLs from mingw64/bin to staging to ensure every dependency is included
-          echo "Copying all DLLs to staging directory..."
-          cp "$MINGW_BIN_DIR"/*.dll "$STAGING_DIR/" || true
-          
-          # Copy resource file if it exists
-          if [ -f builddir/share/amberol/amberol.gresource ]; then
-            mkdir -p "$STAGING_DIR/share/amberol"
-            cp builddir/share/amberol/amberol.gresource "$STAGING_DIR/share/amberol/"
-          fi
-          tar -czvf amberol-windows.tar.gz -C "$STAGING_DIR" . || true
+          gtk4-builder-tool bundle \
+            install/mingw64/bin/amberol.exe \
+            amberol-bundle \
+            --runtime
 
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+      - name: Package
+        shell: msys2 {0}
+        run: |
+          tar -czvf amberol-windows.tar.gz amberol-bundle
+
+      - uses: actions/upload-artifact@v4
         with:
           name: amberol-windows
           path: amberol-windows.tar.gz
@@ -231,57 +119,56 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           override: true
 
-      - name: Install system dependencies (macOS)
+      - name: Install dependencies
         run: |
           brew update
-          brew install gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-bad gst-plugins-good gst-plugins-ugly meson ninja
+          brew install gtk4 libadwaita gstreamer \
+            gst-plugins-base gst-plugins-bad \
+            meson ninja
 
-      - name: Generate Cargo.lock (macOS)
-        run: cargo generate-lockfile
+      - run: cargo generate-lockfile
 
-      - name: Configure Meson build (macOS)
+      - name: Configure
         run: meson setup builddir
 
-      - name: Compile project (macOS)
+      - name: Build
         run: meson compile -C builddir
 
-      - name: Archive artifacts (macOS)
+      - name: Install
+        run: meson install -C builddir --destdir install
+
+      - name: Package
         run: |
-          mkdir staging
-          cp builddir/src/amberol staging/
+          mkdir -p staging
+          cp -r install/usr/* staging/
           tar -czvf amberol-macos.tar.gz -C staging .
 
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: amberol-macos
           path: amberol-macos.tar.gz
 
   release:
     needs: [build-linux, build-windows, build-macos]
-    runs-on: ubuntu-latest
     if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
     steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
           files: |
