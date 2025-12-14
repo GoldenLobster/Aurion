@@ -103,6 +103,25 @@ jobs:
       - name: Package (Windows)
         run: |
           mkdir -p artifact/mingw64/bin
+          mkdir -p artifact/mingw64/share/amberol
+          mkdir -p artifact/mingw64/share/applications
+          mkdir -p artifact/mingw64/share/metainfo
+
+          # Binary
+          cp builddir/src/amberol.exe artifact/mingw64/bin/
+
+          # GResource (this is what the app panics on if missing)
+          cp builddir/src/amberol.gresource artifact/mingw64/share/amberol/
+
+          # Desktop + metainfo files
+          cp data/*.desktop artifact/mingw64/share/applications/ || true
+          cp data/*.metainfo.xml artifact/mingw64/share/metainfo/ || true
+
+          # Bundle runtime DLLs
+          ldd artifact/mingw64/bin/amberol.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/mingw64/bin/
+
+        run: |
+          mkdir -p artifact/mingw64/bin
           mkdir -p artifact/mingw64/share
 
           # Binary
