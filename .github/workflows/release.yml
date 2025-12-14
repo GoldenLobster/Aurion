@@ -6,26 +6,25 @@ on:
       - main
     tags:
       - 'v*'
+  pull_request:
 
 jobs:
   build:
-    name: Build Amberol
-    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable]
+    runs-on: ${{ matrix.os }}
+    name: Build Amberol (${{ matrix.os }}, Rust ${{ matrix.rust }})
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      - name: Setup Rust
+        uses: rust-lang/setup-rust@v2
         with:
-          toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
+          rust-version: ${{ matrix.rust }}
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -48,26 +47,19 @@ jobs:
         run: |
           choco install -y meson ninja pkgconfiglite gtk4 gstreamer gstreamer-plugins-good gettext
 
-      - name: Set up environment for Meson (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-
-      - name: Configure Meson build
+      - name: Create build directory
         run: meson setup builddir
 
       - name: Build Amberol
-        run: ninja -C builddir
+        run: |
+          meson compile -C builddir
 
       - name: Install Amberol
-        run: ninja -C builddir install
+        run: |
+          meson install -C builddir
 
-      - name: Upload build artifacts
+      - name: Package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: amberol-${{ matrix.os }}
-          path: |
-            builddir/amberol
-            builddir/*.desktop
-            builddir/*.metainfo.xml
-            builddir/*.gresource
+          path: builddir/install
