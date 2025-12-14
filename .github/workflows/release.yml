@@ -5,59 +5,69 @@ on:
     branches:
       - main
   pull_request:
+    branches:
+      - main
 
 jobs:
   build:
-    name: Build Amberol (${{ matrix.os }}, Rust ${{ matrix.rust }})
+    name: Build Amberol (${{ matrix.os }}, ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         rust: [1.72.0]
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Set up Rust
-        uses: rust-lang/setup-rust@v2
+        uses: actions-rs/toolchain@v1
         with:
-          rust-version: ${{ matrix.rust }}
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
 
-      # Install dependencies per OS
-      - name: Install dependencies (Linux)
+      - name: Install dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt update
           sudo apt install -y \
-            build-essential meson ninja-build pkg-config \
-            libglib2.0-dev libgtk-4-dev gettext \
+            libgtk-4-dev \
             libadwaita-1-dev \
-            libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            ninja-build \
+            gettext \
+            cmake \
+            pkg-config
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install gtk4 libadwaita meson ninja gettext gstreamer gst-plugins-base gst-plugins-good
+          brew install gtk4 libadwaita gstreamer gst-plugins-base ninja gettext cmake pkg-config
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install -y gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-good ninja
+          choco install gtk4 libadwaita gstreamer gst-plugins-base ninja cmake gettext --yes
+          refreshenv
 
       - name: Create build directory
+        run: mkdir -p builddir
+
+      - name: Configure Meson
         run: meson setup builddir
 
-      - name: Build project
+      - name: Build with Ninja
         run: ninja -C builddir
 
-      - name: Install built files
+      - name: Install Amberol
         run: ninja -C builddir install
 
-      # Upload artifacts for later download
-      - name: Upload artifacts
+      - name: Upload built artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: amberol-${{ runner.os }}
+          name: amberol-${{ matrix.os }}
           path: builddir/install
