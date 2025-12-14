@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*.*.*'
-  workflow_dispatch:
+  pull_request:
 
 jobs:
   build:
@@ -17,42 +15,29 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [1.72.0]
 
-    env:
-      CARGO_TERM_COLOR: always
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: actions/setup-rust@v2
         with:
-          toolchain: ${{ matrix.rust }}
-          override: true
-
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo build
-        uses: actions/cache@v3
-        with:
-          path: target
-          key: cargo-build-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          rust-version: ${{ matrix.rust }}
 
       - name: Install dependencies on Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y meson ninja-build pkg-config libglib2.0-dev libgtk-4-dev gettext
+          sudo apt install -y \
+            meson ninja-build pkg-config \
+            libglib2.0-dev libgtk-4-dev gettext \
+            libadwaita-1-dev
 
       - name: Install dependencies on macOS
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install meson ninja gettext glib gtk4
+          brew install meson ninja gettext glib gtk4 libadwaita
 
       - name: Install dependencies on Windows
         if: runner.os == 'Windows'
@@ -60,25 +45,27 @@ jobs:
           choco install msys2 --yes
           refreshenv
           pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-meson mingw-w64-x86_64-ninja mingw-w64-x86_64-glib2 mingw-w64-x86_64-gettext mingw-w64-x86_64-gtk4
+          pacman -S --noconfirm \
+            mingw-w64-x86_64-toolchain \
+            mingw-w64-x86_64-meson \
+            mingw-w64-x86_64-ninja \
+            mingw-w64-x86_64-glib2 \
+            mingw-w64-x86_64-gettext \
+            mingw-w64-x86_64-gtk4 \
+            mingw-w64-x86_64-libadwaita
 
-      - name: Build Amberol
-        run: |
-          mkdir -p builddir
-          cd builddir
-          meson setup --prefix="$PWD/install" ..
-          meson compile -C .
-          meson install -C .
+      - name: Create build directory
+        run: meson setup builddir
 
-      - name: Package release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          cd builddir/install
-          zip -r amberol-${GITHUB_REF_NAME}-${{ runner.os }}.zip .
+      - name: Compile project
+        run: meson compile -C builddir
 
-      - name: Upload release artifact
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Install project
+        run: meson install -C builddir
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: amberol-${{ runner.os }}
-          path: builddir/install/*.zip
+          path: |
+            builddir/install
