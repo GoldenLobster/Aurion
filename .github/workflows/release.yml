@@ -23,12 +23,18 @@ jobs:
             libgstreamer-plugins-base1.0-dev \
             libgstreamer-plugins-bad1.0-dev \
             blueprint-compiler appstream desktop-file-utils gettext
+
+      - name: Validate Blueprints
+        run: |
+          blueprint-compiler batch-compile --check src/gtk
+
       - name: Build (Linux)
         run: |
           cargo generate-lockfile
           meson setup builddir
           meson compile -C builddir
           meson install -C builddir --destdir install
+
       - name: Upload artifact (Linux)
         uses: actions/upload-artifact@v4
         with:
@@ -44,12 +50,18 @@ jobs:
         run: |
           brew update
           brew install meson ninja pkg-config rust gtk4 libadwaita gstreamer blueprint-compiler appstream gettext
+
+      - name: Validate Blueprints
+        run: |
+          blueprint-compiler batch-compile --check src/gtk
+
       - name: Build (macOS)
         run: |
           cargo generate-lockfile
           meson setup builddir
           meson compile -C builddir
           meson install -C builddir --destdir install
+
       - name: Upload artifact (macOS)
         uses: actions/upload-artifact@v4
         with:
@@ -61,7 +73,6 @@ jobs:
     defaults:
       run:
         shell: msys2 {0}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -87,6 +98,13 @@ jobs:
             mingw-w64-x86_64-desktop-file-utils
             mingw-w64-x86_64-gettext
             mingw-w64-x86_64-appstream
+
+      - name: Validate Blueprints
+        env:
+          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
+        run: |
+          blueprint-compiler batch-compile --check src/gtk
+
       - name: Build (Windows)
         env:
           PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
@@ -94,6 +112,7 @@ jobs:
           cargo generate-lockfile
           meson setup builddir --prefix=/mingw64
           meson compile -C builddir
+
       - name: Package (Windows)
         run: |
           mkdir -p artifact/mingw64/bin
@@ -106,6 +125,7 @@ jobs:
           fi
           # Bundle runtime DLLs
           ldd artifact/mingw64/bin/amberol.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/mingw64/bin/
+
       - name: Upload artifact (Windows)
         uses: actions/upload-artifact@v4
         with:
