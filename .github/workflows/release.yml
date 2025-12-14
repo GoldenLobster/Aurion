@@ -10,72 +10,62 @@ on:
 
 jobs:
   build:
-    name: Build Amberol (${{ matrix.os }}, ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         rust: [1.72.0]
 
+    env:
+      CARGO_TERM_COLOR: always
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      - name: Setup Rust
+        uses: rust-lang/setup-rust@v2
         with:
+          rust-version: ${{ matrix.rust }}
           profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
+          components: rustfmt, clippy
 
-      - name: Install dependencies (Ubuntu)
+      - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y \
-            python3-pip \
-            libgtk-4-dev \
-            libadwaita-1-dev \
-            libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev \
-            ninja-build \
-            gettext \
-            cmake \
-            pkg-config
-          python3 -m pip install --user meson
+          sudo apt install -y meson ninja-build pkg-config libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev gettext
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install gtk4 libadwaita gstreamer gst-plugins-base ninja gettext cmake pkg-config meson
+          brew install meson ninja pkg-config gtk4 libadwaita gstreamer gettext
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
+        shell: powershell
         run: |
-          choco install gtk4 libadwaita gstreamer gst-plugins-base ninja cmake gettext python3 --yes
-          python -m pip install --user meson
-          refreshenv
+          choco install meson ninja pkgconfiglite gtk4 gstreamer
 
-      - name: Add Meson to PATH
+      - name: Add Meson to PATH (Linux/Windows)
         if: runner.os != 'macOS'
-        run: |
-          echo "$HOME/.local/bin:$PATH" >> $GITHUB_ENV
+        run: echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Create build directory
-        run: mkdir -p builddir
-
-      - name: Configure Meson
+      - name: Configure Meson build
         run: meson setup builddir
 
-      - name: Build with Ninja
-        run: ninja -C builddir
+      - name: Build project
+        run: meson compile -C builddir --verbose
 
-      - name: Install Amberol
-        run: ninja -C builddir install
+      - name: Install resources
+        run: meson install -C builddir --destdir ${{ runner.temp }}/install
 
-      - name: Upload built artifacts
+      - name: Package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: amberol-${{ matrix.os }}
-          path: builddir/install
+          path: ${{ runner.temp }}/install
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
