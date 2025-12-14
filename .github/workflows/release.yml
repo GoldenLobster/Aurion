@@ -1,172 +1,111 @@
-name: Release CI
+name: Release
 
 on:
   push:
-    branches: [main]
-  pull_request:
-  release:
-    types: [published]
-
-permissions:
-  contents: write
+    tags:
+      - 'v*'
 
 jobs:
-  build-linux:
+  linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            meson ninja-build pkg-config git \
+            meson ninja-build pkg-config rustc cargo \
             libgtk-4-dev libadwaita-1-dev \
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev \
             libgstreamer-plugins-bad1.0-dev \
-            gettext desktop-file-utils libxml2-utils
-
-      - run: cargo generate-lockfile
-
-      - name: Configure
-        run: meson setup builddir
+            blueprint-compiler appstream-util desktop-file-utils
 
       - name: Build
-        run: meson compile -C builddir
-
-      - name: Install
-        run: meson install -C builddir --destdir install
-
-      - name: Package
         run: |
-          mkdir -p staging
-          cp -r install/usr/* staging/
-          tar -czvf amberol-linux.tar.gz -C staging .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: amberol-linux
-          path: amberol-linux.tar.gz
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-rust
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-gtk4
-            mingw-w64-x86_64-libadwaita
-            mingw-w64-x86_64-gstreamer
-            mingw-w64-x86_64-gst-plugins-base
-            mingw-w64-x86_64-gst-plugins-bad
-            mingw-w64-x86_64-meson
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-gettext
-            mingw-w64-x86_64-libxml2
-
-      - name: Build and install (MSYS2)
-        shell: msys2 {0}
-        run: |
-          export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
           cargo generate-lockfile
           meson setup builddir
           meson compile -C builddir
           meson install -C builddir --destdir install
 
-      - name: Bundle GTK runtime
-        shell: msys2 {0}
-        run: |
-          gtk4-builder-tool bundle \
-            install/mingw64/bin/amberol.exe \
-            amberol-bundle \
-            --runtime
-
-      - name: Package
-        shell: msys2 {0}
-        run: |
-          tar -czvf amberol-windows.tar.gz amberol-bundle
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: amberol-windows
-          path: amberol-windows.tar.gz
+          name: amberol-linux
+          path: install
 
-  build-macos:
+  macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
 
       - name: Install dependencies
         run: |
           brew update
-          brew install gtk4 libadwaita gstreamer \
-            gst-plugins-base gst-plugins-bad \
-            meson ninja
-
-      - run: cargo generate-lockfile
-
-      - name: Configure
-        run: meson setup builddir
+          brew install meson ninja pkg-config rust gtk4 libadwaita gstreamer blueprint-compiler appstream
 
       - name: Build
-        run: meson compile -C builddir
-
-      - name: Install
-        run: meson install -C builddir --destdir install
-
-      - name: Package
         run: |
-          mkdir -p staging
-          cp -r install/usr/* staging/
-          tar -czvf amberol-macos.tar.gz -C staging .
+          cargo generate-lockfile
+          meson setup builddir
+          meson compile -C builddir
+          meson install -C builddir --destdir install
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
           name: amberol-macos
-          path: amberol-macos.tar.gz
+          path: install
 
-  release:
-    needs: [build-linux, build-windows, build-macos]
-    if: github.event_name == 'release' && github.event.action == 'published'
-    runs-on: ubuntu-latest
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+      - uses: actions/checkout@v4
 
-      - uses: softprops/action-gh-release@v2
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
         with:
-          token: ${{ github.token }}
-          files: |
-            artifacts/amberol-linux/amberol-linux.tar.gz
-            artifacts/amberol-windows/amberol-windows.tar.gz
-            artifacts/amberol-macos/amberol-macos.tar.gz
+          msystem: MINGW64
+          update: true
+          install: >
+            git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-rust
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-gtk4
+            mingw-w64-x86_64-libadwaita
+            mingw-w64-x86_64-gstreamer
+            mingw-w64-x86_64-gst-plugins-base
+            mingw-w64-x86_64-gst-plugins-good
+            mingw-w64-x86_64-gst-plugins-bad
+            mingw-w64-x86_64-gst-plugins-ugly
+            mingw-w64-x86_64-blueprint-compiler
+            mingw-w64-x86_64-appstream-glib
+            mingw-w64-x86_64-desktop-file-utils
+
+      - name: Build
+        env:
+          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
+        run: |
+          cargo generate-lockfile
+          meson setup builddir --prefix=/mingw64
+          meson compile -C builddir
+          meson install -C builddir --destdir install
+
+      - name: Bundle runtime DLLs
+        run: |
+          mkdir -p artifact/bin
+          cp install/mingw64/bin/*.exe artifact/bin/
+          ldd artifact/bin/*.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} artifact/bin/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: amberol-windows
+          path: artifact
