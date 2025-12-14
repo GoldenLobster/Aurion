@@ -72,6 +72,7 @@ jobs:
           update: true
           install: >-
             mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-rust
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-gtk4
             mingw-w64-x86_64-libadwaita
@@ -83,13 +84,7 @@ jobs:
             mingw-w64-x86_64-gettext
             mingw-w64-x86_64-libxml2
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable-x86_64-pc-windows-gnu
-          profile: minimal
-          override: true
-
-      - name: Build (MSYS2)
+      - name: Build and install (MSYS2)
         shell: msys2 {0}
         run: |
           export PKG_CONFIG_PATH=/mingw64/lib/pkgconfig
