@@ -26,7 +26,16 @@ jobs:
 
       - name: Validate Blueprints
         run: |
-          blueprint-compiler batch-compile --check src/gtk
+          mkdir -p blueprint-output
+          blueprint-compiler batch-compile blueprint-output src/gtk \
+            src/gtk/playback-control.blp \
+            src/gtk/playlist-view.blp \
+            src/gtk/queue-row.blp \
+            src/gtk/shortcuts-dialog.blp \
+            src/gtk/song-cover.blp \
+            src/gtk/song-details.blp \
+            src/gtk/volume-control.blp \
+            src/gtk/window.blp
 
       - name: Build (Linux)
         run: |
@@ -53,7 +62,16 @@ jobs:
 
       - name: Validate Blueprints
         run: |
-          blueprint-compiler batch-compile --check src/gtk
+          mkdir -p blueprint-output
+          blueprint-compiler batch-compile blueprint-output src/gtk \
+            src/gtk/playback-control.blp \
+            src/gtk/playlist-view.blp \
+            src/gtk/queue-row.blp \
+            src/gtk/shortcuts-dialog.blp \
+            src/gtk/song-cover.blp \
+            src/gtk/song-details.blp \
+            src/gtk/volume-control.blp \
+            src/gtk/window.blp
 
       - name: Build (macOS)
         run: |
@@ -73,6 +91,7 @@ jobs:
     defaults:
       run:
         shell: msys2 {0}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -103,7 +122,16 @@ jobs:
         env:
           PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
         run: |
-          blueprint-compiler batch-compile --check src/gtk
+          mkdir -p blueprint-output
+          blueprint-compiler batch-compile blueprint-output src/gtk \
+            src/gtk/playback-control.blp \
+            src/gtk/playlist-view.blp \
+            src/gtk/queue-row.blp \
+            src/gtk/shortcuts-dialog.blp \
+            src/gtk/song-cover.blp \
+            src/gtk/song-details.blp \
+            src/gtk/volume-control.blp \
+            src/gtk/window.blp
 
       - name: Build (Windows)
         env:
