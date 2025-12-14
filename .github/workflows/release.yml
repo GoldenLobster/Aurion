@@ -59,12 +59,10 @@ jobs:
         run: meson setup builddir
 
       - name: Build project
-        run: |
-          meson compile -C builddir
+        run: meson compile -C builddir
 
       - name: Install resources
-        run: |
-          meson install -C builddir
+        run: meson install -C builddir
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
