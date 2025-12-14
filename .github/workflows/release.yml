@@ -92,6 +92,8 @@ jobs:
             mingw-w64-x86_64-blueprint-compiler
             mingw-w64-x86_64-appstream-glib
             mingw-w64-x86_64-desktop-file-utils
+            mingw-w64-x86_64-appstream
+            mingw-w64-x86_64-gettext
 
       - name: Build
         env:
