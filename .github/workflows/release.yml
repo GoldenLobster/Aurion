@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    name: Build Amberol (OS: ${{ matrix.os }}, Rust: ${{ matrix.rust }})
+    name: Build Amberol (${{ matrix.os }}, Rust ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -31,14 +31,6 @@ jobs:
       - name: Print Rust version
         run: rustc --version
 
-      - name: Confirm Meson missing (for debug)
-        run: |
-          if ! command -v meson >/dev/null 2>&1; then
-            echo "Meson is not installed yet"
-          else
-            meson --version
-          fi
-
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -46,8 +38,7 @@ jobs:
           sudo apt install -y meson ninja-build pkg-config \
             libgtk-4-dev libadwaita-1-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            gstreamer1.0-plugins-good \
-            gettext
+            gstreamer1.0-plugins-good gettext
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
@@ -61,12 +52,8 @@ jobs:
           choco install meson ninja pkgconfiglite gtk4 gstreamer gettext -y
           refreshenv
 
-      - name: Show environment PATH
-        run: echo "$PATH"
-
       - name: Configure Meson build
-        run: |
-          meson setup builddir
+        run: meson setup builddir
 
       - name: Build project
         run: meson compile -C builddir
