@@ -39,7 +39,7 @@ It’s designed to be a simple yet powerful music player with additional feature
   <img src="https://i.imgur.com/fZehwCx.png" alt="main application" width="150">
   <img src="https://i.imgur.com/5tmSnZ4.png" alt="queue overlay" width="150">
   <img src="https://i.imgur.com/k7J7CQP.png" alt="queue sidebar" width="150">
-  <img src="https://i.imgur.com/Rrm0mpZ.gif" alt="ui crossfade" width="150">
+  <img src="https://i.postimg.cc/tR8pgcd6/fade-showcase.gif" alt="ui crossfade" width="150">
   <img src="https://i.imgur.com/QFzVZVR.gif" alt="audio crossfade" width="150">
 
 </div>
