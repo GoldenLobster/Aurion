@@ -34,9 +34,13 @@ It’s designed to be a simple yet powerful music player with additional feature
 - Most icons are from [Lucide](https://lucide.dev/)  
 - Some icons are from [Amberol](https://gitlab.gnome.org/World/amberol)  
 
-![main application](https://i.imgur.com/fZehwCx.png)  
-![queue overlay](https://i.imgur.com/5tmSnZ4.png)  
-![queue sidebar](https://i.imgur.com/k7J7CQP.png)
-![ui crossfade](https://i.imgur.com/Rrm0mpZ.gif)
-![audio crossfade](https://i.imgur.com/QFzVZVR.gif)
-...
+<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+
+  <img src="https://i.imgur.com/fZehwCx.png" alt="main application" width="150">
+  <img src="https://i.imgur.com/5tmSnZ4.png" alt="queue overlay" width="150">
+  <img src="https://i.imgur.com/k7J7CQP.png" alt="queue sidebar" width="150">
+  <img src="https://i.imgur.com/Rrm0mpZ.gif" alt="ui crossfade" width="150">
+  <img src="https://i.imgur.com/QFzVZVR.gif" alt="audio crossfade" width="150">
+
+</div>
+
