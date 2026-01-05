@@ -10,7 +10,7 @@ It’s designed to be a simple yet powerful music player with additional feature
 - **Plays almost any music file** (depending on system codecs)  
 - **Music downloader** powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ytmusicapi](https://github.com/sigma67/ytmusicapi) for searching and downloading songs  
 - **Crossfade songs** for smooth transitions  
-- **Playback controls**: shuffle, repeat, skip, etc.  
+- **Playback controls**: shuffle, repeat, skip, search by artist or name etc.  
 - **Clean, intuitive UI** heavily inspired by Amberol  
 
 ---
