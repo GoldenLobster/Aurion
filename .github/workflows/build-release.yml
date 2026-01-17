@@ -264,9 +264,24 @@ jobs:
       - name: Create macOS zip
         run: |
           mkdir -p release-assets
-          cd macos
-          zip -r ../release-assets/Aurion-${{ needs.get-version.outputs.version }}-macos.zip Aurion.app
-          cd ..
+          # The artifact structure may vary, so we check what we got
+          if [ -d "macos/Aurion.app" ]; then
+            cd macos
+            zip -r ../release-assets/Aurion-${{ needs.get-version.outputs.version }}-macos.zip Aurion.app
+            cd ..
+          elif [ -d "macos/Contents" ]; then
+            # If the app structure was flattened, rebuild it
+            mkdir -p macos-app/Aurion.app
+            cp -r macos/* macos-app/Aurion.app/
+            cd macos-app
+            zip -r ../release-assets/Aurion-${{ needs.get-version.outputs.version }}-macos.zip Aurion.app
+            cd ..
+          else
+            # List what we got for debugging
+            echo "macOS artifact contents:"
+            ls -la macos
+            exit 1
+          fi
       
       - name: Copy executables to release assets
         run: |
