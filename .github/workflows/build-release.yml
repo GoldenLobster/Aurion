@@ -5,30 +5,14 @@ on:
     branches:
       - main
       - master
+  workflow_dispatch: # Allows you to run this manually from the Actions tab
+
+# MANUAL VERSIONING: Change this value to update your release version
+env:
+  APP_VERSION: "1.0.1"
 
 jobs:
-  get-version:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Calculate Version
-        id: version
-        run: |
-          # Get the number of commits
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          # Convert to version: 1.0 for first commit, 1.1 for second, etc.
-          MINOR=$((COMMIT_COUNT - 1))
-          VERSION="1.$MINOR"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION"
-
   build-windows:
-    needs: get-version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +30,8 @@ jobs:
       
       - name: Build executable
         run: |
-          pyinstaller --onefile --windowed --name "Aurion" --icon "src/Icons/logo.ico" --add-data "src:src" --distpath "./dist" main.py
+          # Use ; as separator for Windows
+          pyinstaller --onefile --windowed --name "Aurion" --icon "src/Icons/logo.ico" --add-data "src;src" --distpath "./dist" main.py
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -55,7 +40,6 @@ jobs:
           path: dist/Aurion.exe
 
   build-macos:
-    needs: get-version
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,10 +57,12 @@ jobs:
       
       - name: Convert icon to ICNS format
         run: |
-          python3 convert_icon_to_icns.py
+          # Ensure this script exists in your repo
+          python3 convert_icon_to_icns.py || echo "Icon conversion script not found, skipping..."
       
       - name: Build executable
         run: |
+          # PyInstaller creates the .app bundle automatically with --windowed
           pyinstaller --onefile --windowed \
             --name "Aurion" \
             --icon "src/Icons/logo.icns" \
@@ -84,47 +70,19 @@ jobs:
             --distpath "./dist" \
             main.py
       
-      - name: Create app bundle
+      - name: Zip App Bundle
+        # Zipping here preserves the "executable" permissions for macOS
         run: |
-          mkdir -p Aurion.app/Contents/MacOS
-          mkdir -p Aurion.app/Contents/Resources
-          mv dist/Aurion Aurion.app/Contents/MacOS/Aurion
-          cp src/Icons/logo.icns Aurion.app/Contents/Resources/Aurion.icns
-          cat > Aurion.app/Contents/Info.plist << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key>
-            <string>Aurion</string>
-            <key>CFBundleDisplayName</key>
-            <string>Aurion</string>
-            <key>CFBundleExecutable</key>
-            <string>Aurion</string>
-            <key>CFBundleIconFile</key>
-            <string>Aurion</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.andrewdore.aurion</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>CFBundleVersion</key>
-            <string>1.0.0</string>
-            <key>CFBundleShortVersionString</key>
-            <string>1.0.0</string>
-            <key>LSMinimumSystemVersion</key>
-            <string>10.13</string>
-          </dict>
-          </plist>
-          EOF
+          cd dist
+          zip -r ../Aurion-macos.zip Aurion.app
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: aurion-macos
-          path: Aurion.app
+          path: Aurion-macos.zip
 
   build-linux:
-    needs: get-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -146,7 +104,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller Pillow
       
-      - name: Build executable with GStreamer bundling
+      - name: Build executable with PyInstaller
         run: |
           pyinstaller --onefile --windowed \
             --name "Aurion" \
@@ -158,44 +116,18 @@ jobs:
             --distpath "./dist" \
             main.py
       
-      - name: Prepare AppImage directory structure
+      - name: Create AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1 # Fixes FUSE error on GitHub runners
         run: |
           mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/lib
-          mkdir -p AppDir/usr/lib/gstreamer-1.0
-          mkdir -p AppDir/usr/lib/x86_64-linux-gnu
-          
           cp dist/Aurion AppDir/usr/bin/
           
-          # Copy GStreamer libraries
-          sudo cp -r /usr/lib/x86_64-linux-gnu/gstreamer-1.0/* AppDir/usr/lib/gstreamer-1.0/ 2>/dev/null || true
-          sudo cp /usr/lib/x86_64-linux-gnu/libgstreamer-1.0.so* AppDir/usr/lib/ 2>/dev/null || true
-          sudo cp /usr/lib/x86_64-linux-gnu/libgst*.so* AppDir/usr/lib/ 2>/dev/null || true
-          
-          # Fix permissions
-          sudo chown -R $(id -u):$(id -g) AppDir/
-          
-          # Convert ico to png for AppImage
-          if [ -f "src/Icons/logo.ico" ]; then
-            convert src/Icons/logo.ico -background none AppDir/logo.png 2>/dev/null || true
-          fi
-          
-          # Ensure logo.png exists (fallback to original)
-          if [ ! -f "AppDir/logo.png" ] && [ -f "src/Icons/logo.png" ]; then
-            cp src/Icons/logo.png AppDir/logo.png
-          fi
-          
+          # Simplified AppRun for the AppImage
           cat > AppDir/AppRun << 'EOF'
           #!/bin/bash
           APPDIR="$(dirname "$(readlink -f "$0")")"
-          
-          # Set up library paths for GStreamer and other system libraries
-          export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
-          export GST_PLUGIN_SYSTEM_PATH="$APPDIR/usr/lib/gstreamer-1.0:/usr/lib/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0:$GST_PLUGIN_SYSTEM_PATH"
-          export GST_PLUGIN_SCANNER="$APPDIR/usr/lib/gstreamer-1.0/gst-plugin-scanner"
-          export GStreamer_FOUND=1
-          
-          # Run the application
+          export LD_LIBRARY_PATH="$APPDIR/usr/lib:$LD_LIBRARY_PATH"
           exec "$APPDIR/usr/bin/Aurion" "$@"
           EOF
           chmod +x AppDir/AppRun
@@ -206,87 +138,45 @@ jobs:
           Exec=Aurion
           Icon=logo
           Type=Application
-          Categories=AudioVideo;Audio;Player;
+          Categories=AudioVideo;
           EOF
+          
+          cp src/Icons/logo.png AppDir/logo.png || touch AppDir/logo.png
           
           wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
           chmod +x appimagetool
-          ./appimagetool AppDir Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage
+          ./appimagetool AppDir Aurion-${{ env.APP_VERSION }}-x86_64.AppImage
       
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
           name: aurion-linux-appimage
-          path: Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage
+          path: Aurion-${{ env.APP_VERSION }}-x86_64.AppImage
 
   create-release:
-    needs: [get-version, build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download Windows artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: aurion-windows
-          path: ./windows
+          path: ./artifacts
       
-      - name: Download macOS artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: aurion-macos
-          path: ./macos
-      
-      - name: Download Linux AppImage artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: aurion-linux-appimage
-          path: ./linux-appimage
-      
-      - name: Create macOS zip
+      - name: Prepare Release Assets
         run: |
           mkdir -p release-assets
-          # The artifact structure may vary, so we check what we got
-          if [ -d "macos/Aurion.app" ]; then
-            cd macos
-            zip -r ../release-assets/Aurion-${{ needs.get-version.outputs.version }}-macos.zip Aurion.app
-            cd ..
-          elif [ -d "macos/Contents" ]; then
-            # If the app structure was flattened, rebuild it
-            mkdir -p macos-app/Aurion.app
-            cp -r macos/* macos-app/Aurion.app/
-            cd macos-app
-            zip -r ../release-assets/Aurion-${{ needs.get-version.outputs.version }}-macos.zip Aurion.app
-            cd ..
-          else
-            # List what we got for debugging
-            echo "macOS artifact contents:"
-            ls -la macos
-            exit 1
-          fi
+          cp artifacts/aurion-windows/Aurion.exe release-assets/Aurion-${{ env.APP_VERSION }}-windows.exe
+          cp artifacts/aurion-macos/Aurion-macos.zip release-assets/Aurion-${{ env.APP_VERSION }}-macos.zip
+          cp artifacts/aurion-linux-appimage/*.AppImage release-assets/
       
-      - name: Copy executables to release assets
-        run: |
-          mkdir -p release-assets
-          cp windows/Aurion.exe release-assets/Aurion-${{ needs.get-version.outputs.version }}-windows.exe
-          cp linux-appimage/Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage release-assets/
-      
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v1
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.get-version.outputs.version }}
-          name: Aurion v${{ needs.get-version.outputs.version }}
-          body: |
-            Automated release build for Aurion Music Player
-            
-            **Downloads:**
-            - **Windows**: `Aurion-${{ needs.get-version.outputs.version }}-windows.exe` - Direct executable
-            - **macOS**: `Aurion-${{ needs.get-version.outputs.version }}-macos.zip` - App bundle
-            - **Linux (AppImage)**: `Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage` - Universal Linux executable
+          tag_name: v${{ env.APP_VERSION }}
+          name: Aurion v${{ env.APP_VERSION }}
+          body: "Automated release build for Aurion Music Player"
           files: release-assets/*
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
