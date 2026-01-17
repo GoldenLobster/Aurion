@@ -46,12 +46,7 @@ jobs:
       
       - name: Build executable
         run: |
-          pyinstaller --onefile --windowed ^
-            --name "Aurion" ^
-            --icon src/Icons/logo.ico ^
-            --add-data "src:src" ^
-            --distpath "./dist" ^
-            main.py
+          pyinstaller --onefile --windowed --name "Aurion" --icon src/Icons/logo.ico --add-data "src:src" --distpath "./dist" main.py
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -126,7 +121,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y fakeroot dpkg-dev appimage-builder
+          sudo apt-get install -y fakeroot dpkg-dev
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
