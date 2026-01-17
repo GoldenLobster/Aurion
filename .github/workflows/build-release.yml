@@ -234,6 +234,8 @@ jobs:
   create-release:
     needs: [get-version, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       
