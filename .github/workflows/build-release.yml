@@ -12,7 +12,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       
@@ -31,10 +31,10 @@ jobs:
     needs: get-version
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
@@ -54,7 +54,7 @@ jobs:
             main.py
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: aurion-windows
           path: dist/Aurion.exe
@@ -63,10 +63,10 @@ jobs:
     needs: get-version
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
@@ -107,7 +107,7 @@ jobs:
           EOF
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: aurion-macos
           path: Aurion.app
@@ -116,10 +116,10 @@ jobs:
     needs: get-version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
@@ -200,13 +200,13 @@ jobs:
           dpkg-deb --build debian-build aurion_${{ needs.get-version.outputs.version }}_amd64.deb
       
       - name: Upload AppImage artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: aurion-linux-appimage
           path: Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage
       
       - name: Upload Debian artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: aurion-linux-debian
           path: aurion_${{ needs.get-version.outputs.version }}_amd64.deb
@@ -215,28 +215,28 @@ jobs:
     needs: [get-version, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Download Windows artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: aurion-windows
           path: ./windows
       
       - name: Download macOS artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: aurion-macos
           path: ./macos
       
       - name: Download Linux AppImage artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: aurion-linux-appimage
           path: ./linux-appimage
       
       - name: Download Linux Debian artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: aurion-linux-debian
           path: ./linux-debian
@@ -255,13 +255,11 @@ jobs:
           cp linux-appimage/Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage release-assets/
           cp linux-debian/*.deb release-assets/
       
-      - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ needs.get-version.outputs.version }}
-          release_name: Aurion v${{ needs.get-version.outputs.version }}
+          name: Aurion v${{ needs.get-version.outputs.version }}
           body: |
             Automated release build for Aurion Music Player
             
@@ -270,13 +268,8 @@ jobs:
             - **macOS**: `Aurion-${{ needs.get-version.outputs.version }}-macos.zip` - App bundle
             - **Linux (AppImage)**: `Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage` - Universal Linux executable
             - **Linux (Debian)**: `aurion_${{ needs.get-version.outputs.version }}_amd64.deb` - Debian/Ubuntu package
+          files: release-assets/*
           draft: false
           prerelease: false
-      
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release-assets/*
-          tag_name: v${{ needs.get-version.outputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
