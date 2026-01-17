@@ -135,65 +135,6 @@ jobs:
             --distpath "./dist" \
             main.py
       
-      - name: Create AppImage
-        run: |
-          mkdir -p AppDir/usr/bin
-          cp dist/Aurion AppDir/usr/bin/
-          
-          # Create a simple PNG logo for AppImage (convert from ico if needed)
-          if [ -f "src/Icons/logo.png" ]; then
-            cp src/Icons/logo.png AppDir/logo.png
-          else
-            # Convert ico to png using ImageMagick if available, otherwise use a placeholder
-            if command -v convert &> /dev/null; then
-              convert src/Icons/logo.ico AppDir/logo.png
-            else
-              # Create a minimal PNG if conversion fails
-              python3 << 'PYEOF'
-          import os
-          # Create a minimal valid PNG file if no icon available
-          # This is a 1x1 transparent pixel PNG (minimal valid PNG)
-          png_bytes = bytes([
-              0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-              0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-              0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
-              0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-              0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-              0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
-          ])
-          with open("AppDir/logo.png", "wb") as f:
-              f.write(png_bytes)
-          PYEOF
-            fi
-          fi
-          
-          cat > AppDir/AppRun << 'EOF'
-          #!/bin/bash
-          APPDIR="$(dirname "$(readlink -f "$0")")"
-          
-          # Set up library paths for GStreamer and other system libraries
-          export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
-          export GST_PLUGIN_SYSTEM_PATH="$APPDIR/usr/lib/gstreamer-1.0:/usr/lib/gstreamer-1.0:$GST_PLUGIN_SYSTEM_PATH"
-          export GST_PLUGIN_SCANNER="$APPDIR/usr/lib/gstreamer-1.0/gst-plugin-scanner"
-          
-          # Run the application
-          exec "$APPDIR/usr/bin/Aurion" "$@"
-          EOF
-          chmod +x AppDir/AppRun
-          
-          cat > AppDir/Aurion.desktop << 'EOF'
-          [Desktop Entry]
-          Name=Aurion
-          Exec=Aurion
-          Icon=logo
-          Type=Application
-          Categories=AudioVideo;Audio;Player;
-          EOF
-          
-          wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-          chmod +x appimagetool
-          ./appimagetool AppDir Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage
-      
       - name: Create Debian Package
         run: |
           mkdir -p debian-build/DEBIAN
@@ -258,12 +199,6 @@ jobs:
           name: aurion-macos
           path: ./macos
       
-      - name: Download Linux AppImage artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: aurion-linux-appimage
-          path: ./linux-appimage
-      
       - name: Download Linux Debian artifact
         uses: actions/download-artifact@v4
         with:
@@ -296,7 +231,6 @@ jobs:
         run: |
           mkdir -p release-assets
           cp windows/Aurion.exe release-assets/Aurion-${{ needs.get-version.outputs.version }}-windows.exe
-          cp linux-appimage/Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage release-assets/
           cp linux-debian/*.deb release-assets/
       
       - name: Create Release and Upload Assets
@@ -310,8 +244,7 @@ jobs:
             **Downloads:**
             - **Windows**: `Aurion-${{ needs.get-version.outputs.version }}-windows.exe` - Direct executable
             - **macOS**: `Aurion-${{ needs.get-version.outputs.version }}-macos.zip` - App bundle
-            - **Linux (AppImage)**: `Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage` - Universal Linux executable
-            - **Linux (Debian)**: `aurion_${{ needs.get-version.outputs.version }}_amd64.deb` - Debian/Ubuntu package
+            - **Linux**: `aurion_${{ needs.get-version.outputs.version }}_amd64.deb` - Debian/Ubuntu package installer
           files: release-assets/*
           draft: false
           prerelease: false

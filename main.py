@@ -57,8 +57,30 @@ def setup_application_icon(app):
         pass
 
 
+def setup_gstreamer():
+    """
+    Configure GStreamer environment variables for Linux PyInstaller builds.
+    This ensures that the bundled GStreamer plugins are correctly located.
+    """
+    if sys.platform.startswith('linux') and getattr(sys, 'frozen', False):
+        bundle_dir = sys._MEIPASS
+        
+        # Set the GStreamer plugin path to the bundled 'gst-plugins' directory
+        gst_plugins_path = os.path.join(bundle_dir, 'gst-plugins')
+        if os.path.exists(gst_plugins_path):
+            os.environ['GST_PLUGIN_SYSTEM_PATH'] = gst_plugins_path
+        
+        # Set the plugin scanner path
+        gst_scanner_path = os.path.join(bundle_dir, 'gst-plugin-scanner')
+        if os.path.exists(gst_scanner_path):
+            os.environ['GST_PLUGIN_SCANNER'] = gst_scanner_path
+
+
 def main():
     """Main application entry point"""
+    # Configure GStreamer for Linux frozen builds
+    setup_gstreamer()
+    
     app = QApplication(sys.argv)
     
     # Initialize application settings and FFmpeg
