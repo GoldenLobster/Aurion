@@ -241,7 +241,7 @@ jobs:
           Architecture: amd64
           Maintainer: Aurion <aurion@example.com>
           Description: A sleek, feature-rich music player for Linux, Windows, and macOS
-          Depends: libc6, libqt5gui5, libqt5core5a, libgstreamer1.0-0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good
+          Depends: libc6, libqt5gui5, libqt5core5a, libgstreamer1.0-0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-plugins-ugly
           EOF
           
           dpkg-deb --build debian-build aurion_${{ needs.get-version.outputs.version }}_amd64.deb
