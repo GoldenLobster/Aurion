@@ -3,11 +3,17 @@ from tkinter import filedialog, messagebox
 from ytmusicapi import YTMusic
 from yt_dlp import YoutubeDL
 import os
+import sys
 import threading
 import re
 import subprocess
 import ctypes
-import threading
+from pathlib import Path
+
+# Add parent directories to path so imports work when run as subprocess
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from src.config.ffmpeg_manager import init_ffmpeg, get_ffmpeg_path, get_ffprobe_path, set_ffmpeg_path, get_search_suggestions
 
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
@@ -49,19 +55,55 @@ ytmusic = YTMusic()
 # -----------------------------
 # FFmpeg path resolution
 # -----------------------------
-def get_ffmpeg_dir():
-    """Always returns ./ffmpeg next to app.py"""
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    ffmpeg_dir = os.path.join(base_path, "ffmpeg")
+def init_ffmpeg_paths():
+    """Initialize ffmpeg paths from system or local directory"""
+    base_path = Path(os.path.dirname(os.path.abspath(__file__)))
+    local_ffmpeg_dir = base_path / "ffmpeg"
+    
+    # Try to detect ffmpeg from system or local directory
+    if init_ffmpeg(local_ffmpeg_dir):
+        return True
+    
+    # If not found, prompt user to locate it
+    from ffmpeg_locator_dialog import FFmpegLocatorDialog
+    
+    # Create a minimal Tk window for dialog
+    temp_root = ctk.CTk()
+    temp_root.withdraw()
+    
+    dialog = FFmpegLocatorDialog(temp_root, get_search_suggestions())
+    if dialog.exec_() == FFmpegLocatorDialog.Accepted:
+        if set_ffmpeg_path(dialog.get_selected_path()):
+            temp_root.destroy()
+            return True
+        else:
+            show_error("Invalid FFmpeg Directory", 
+                      "Selected directory does not contain both 'ffmpeg' and 'ffprobe' binaries.")
+            temp_root.destroy()
+            return False
+    
+    temp_root.destroy()
+    return False
 
-    if not os.path.exists(os.path.join(ffmpeg_dir, "ffmpeg.exe")):
-        show_error(
-            "FFmpeg missing",
-            "ffmpeg/ffmpeg.exe was not found.\n"
-            "Make sure ffmpeg.exe and ffprobe.exe exist in the ffmpeg folder."
-        )
 
-    return ffmpeg_dir
+def get_ffmpeg_exe():
+    """Get the ffmpeg executable path"""
+    ffmpeg_path = get_ffmpeg_path()
+    if not ffmpeg_path:
+        show_error("FFmpeg not found", 
+                  "FFmpeg executable could not be located. Please ensure it is installed.")
+        return None
+    return ffmpeg_path
+
+
+def get_ffprobe_exe():
+    """Get the ffprobe executable path"""
+    ffprobe_path = get_ffprobe_path()
+    if not ffprobe_path:
+        show_error("FFprobe not found", 
+                  "FFprobe executable could not be located. Please ensure it is installed.")
+        return None
+    return ffprobe_path
 
 
 def show_error(title, text):
@@ -214,7 +256,12 @@ def download_audio(urls_or_meta):
         show_info("Already downloaded", "All selected items were already downloaded.")
         return
 
-    ffmpeg_dir = get_ffmpeg_dir()
+    ffmpeg_exe = get_ffmpeg_exe()
+    if not ffmpeg_exe:
+        return
+    
+    # Get directory containing ffmpeg for yt-dlp
+    ffmpeg_dir = os.path.dirname(ffmpeg_exe)
 
     def progress_hook(status):
         state = status.get("status")
@@ -363,7 +410,10 @@ def clean_metadata(mp3_path, meta, thumb_path, ffmpeg_dir):
     if not os.path.exists(mp3_path):
         return
 
-    ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+    ffmpeg_exe = get_ffmpeg_exe()
+    if not ffmpeg_exe:
+        return
+    
     tmp_path = mp3_path + ".tmp"
 
     created_temp_cover = False
@@ -555,7 +605,10 @@ def find_thumbnail(base_path):
 
 def extract_cover_to_jpeg(mp3_path, ffmpeg_dir):
     """If the mp3 already has an attached picture, extract it to a mjpeg file."""
-    ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+    ffmpeg_exe = get_ffmpeg_exe()
+    if not ffmpeg_exe:
+        return None
+    
     base, _ = os.path.splitext(mp3_path)
     out_path = base + ".apic.jpg"
 
@@ -586,7 +639,10 @@ def ensure_cover_jpeg(src_path, ffmpeg_dir):
     if not src_path or not os.path.exists(src_path):
         return None
 
-    ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+    ffmpeg_exe = get_ffmpeg_exe()
+    if not ffmpeg_exe:
+        return None
+    
     base, _ = os.path.splitext(src_path)
     out_path = base + "_cover.jpg"
 
@@ -794,6 +850,12 @@ def download_url():
 def build_gui():
     global root, status_var, current_item_var, search_filter
     global results_frame, search_entry, url_entry, folder_label, progress_bar
+
+    # Initialize ffmpeg paths before creating GUI
+    if not init_ffmpeg_paths():
+        show_error("FFmpeg Required", 
+                  "FFmpeg could not be found or configured. The application cannot continue without it.")
+        return
 
     root = ctk.CTk()
     root.title("YouTube Music Downloader")

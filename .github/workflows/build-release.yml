@@ -1,0 +1,282 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Calculate Version
+        id: version
+        run: |
+          # Get the number of commits
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          # Convert to version: 1.0 for first commit, 1.1 for second, etc.
+          MINOR=$((COMMIT_COUNT - 1))
+          VERSION="1.$MINOR"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+  build-windows:
+    needs: get-version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --windowed ^
+            --name "Aurion" ^
+            --icon src/Icons/logo.ico ^
+            --add-data "src:src" ^
+            --distpath "./dist" ^
+            main.py
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: aurion-windows
+          path: dist/Aurion.exe
+
+  build-macos:
+    needs: get-version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --windowed \
+            --name "Aurion" \
+            --icon src/Icons/logo.ico \
+            --add-data "src:src" \
+            --distpath "./dist" \
+            main.py
+      
+      - name: Create app bundle
+        run: |
+          mkdir -p Aurion.app/Contents/MacOS
+          mkdir -p Aurion.app/Contents/Resources
+          mv dist/Aurion Aurion.app/Contents/MacOS/Aurion
+          cp src/Icons/logo.icns Aurion.app/Contents/Resources/ 2>/dev/null || true
+          cat > Aurion.app/Contents/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>Aurion</string>
+            <key>CFBundleExecutable</key>
+            <string>Aurion</string>
+            <key>CFBundleIconFile</key>
+            <string>logo</string>
+          </dict>
+          </plist>
+          EOF
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: aurion-macos
+          path: Aurion.app
+
+  build-linux:
+    needs: get-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot dpkg-dev appimage-builder
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --windowed \
+            --name "Aurion" \
+            --icon src/Icons/logo.ico \
+            --add-data "src:src" \
+            --distpath "./dist" \
+            main.py
+      
+      - name: Create AppImage
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/icons
+          cp dist/Aurion AppDir/usr/bin/
+          cp src/Icons/logo.png AppDir/usr/share/icons/ 2>/dev/null || cp src/Icons/logo.ico AppDir/usr/share/icons/
+          
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          APPDIR="$(dirname "$(readlink -f "$0")")"
+          exec "$APPDIR/usr/bin/Aurion" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+          
+          cat > AppDir/Aurion.desktop << 'EOF'
+          [Desktop Entry]
+          Name=Aurion
+          Exec=Aurion
+          Icon=logo
+          Type=Application
+          Categories=AudioVideo;Audio;Player;
+          EOF
+          
+          wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool AppDir Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage
+      
+      - name: Create Debian Package
+        run: |
+          mkdir -p debian-build/DEBIAN
+          mkdir -p debian-build/usr/bin
+          mkdir -p debian-build/usr/share/applications
+          mkdir -p debian-build/usr/share/icons
+          
+          cp dist/Aurion debian-build/usr/bin/
+          chmod +x debian-build/usr/bin/Aurion
+          
+          cp src/Icons/logo.png debian-build/usr/share/icons/ 2>/dev/null || true
+          
+          cat > debian-build/usr/share/applications/aurion.desktop << 'EOF'
+          [Desktop Entry]
+          Name=Aurion
+          Exec=/usr/bin/Aurion
+          Icon=logo
+          Type=Application
+          Categories=AudioVideo;Audio;Player;
+          EOF
+          
+          cat > debian-build/DEBIAN/control << 'EOF'
+          Package: aurion
+          Version: ${{ needs.get-version.outputs.version }}
+          Architecture: amd64
+          Maintainer: Aurion <aurion@example.com>
+          Description: A sleek, feature-rich music player for Linux, Windows, and macOS
+          Depends: libc6, libqt5gui5, libqt5core5a
+          EOF
+          
+          dpkg-deb --build debian-build aurion_${{ needs.get-version.outputs.version }}_amd64.deb
+      
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: aurion-linux-appimage
+          path: Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage
+      
+      - name: Upload Debian artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: aurion-linux-debian
+          path: aurion_${{ needs.get-version.outputs.version }}_amd64.deb
+
+  create-release:
+    needs: [get-version, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: aurion-windows
+          path: ./windows
+      
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: aurion-macos
+          path: ./macos
+      
+      - name: Download Linux AppImage artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: aurion-linux-appimage
+          path: ./linux-appimage
+      
+      - name: Download Linux Debian artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: aurion-linux-debian
+          path: ./linux-debian
+      
+      - name: Create macOS zip
+        run: |
+          mkdir -p release-assets
+          cd macos
+          zip -r ../release-assets/Aurion-${{ needs.get-version.outputs.version }}-macos.zip Aurion.app
+          cd ..
+      
+      - name: Copy executables to release assets
+        run: |
+          mkdir -p release-assets
+          cp windows/Aurion.exe release-assets/Aurion-${{ needs.get-version.outputs.version }}-windows.exe
+          cp linux-appimage/Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage release-assets/
+          cp linux-debian/*.deb release-assets/
+      
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.get-version.outputs.version }}
+          release_name: Aurion v${{ needs.get-version.outputs.version }}
+          body: |
+            Automated release build for Aurion Music Player
+            
+            **Downloads:**
+            - **Windows**: `Aurion-${{ needs.get-version.outputs.version }}-windows.exe` - Direct executable
+            - **macOS**: `Aurion-${{ needs.get-version.outputs.version }}-macos.zip` - App bundle
+            - **Linux (AppImage)**: `Aurion-${{ needs.get-version.outputs.version }}-x86_64.AppImage` - Universal Linux executable
+            - **Linux (Debian)**: `aurion_${{ needs.get-version.outputs.version }}_amd64.deb` - Debian/Ubuntu package
+          draft: false
+          prerelease: false
+      
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-assets/*
+          tag_name: v${{ needs.get-version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
