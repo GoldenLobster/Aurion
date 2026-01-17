@@ -20,14 +20,21 @@ It’s designed to be a simple yet powerful music player with additional feature
 ### Windows
 
 - Optional: Install the [K-Lite Codec Pack](https://www.codecguide.com/download_kl.htm) to support more music file formats  
-- **FFmpeg binaries** in the `ffmpeg` folder (required only for the downloader)  
+- **FFmpeg** installed on your system(optional: only if you want to use the downloader)
 
 ### Other Operating Systems
 
-- **FFmpeg binaries** in the `ffmpeg` folder if you plan to use the downloader  
+- **FFmpeg** installed if you plan to use the downloader  
 - Everything else should work out of the box  
 
 ---
+
+## Running
+
+### All operating systems
+
+- download an executable from the [releases](https://github.com/GoldenLobster/Aurion/releases/latest)
+- clone this repo, install dependencies(requirements.txt) and then run main.py
 
 ## Showcase
 
