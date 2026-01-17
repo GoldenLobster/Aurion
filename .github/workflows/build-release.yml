@@ -121,7 +121,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y fakeroot dpkg-dev libfuse2
+          sudo apt-get install -y fakeroot dpkg-dev libfuse2 libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good libqt5multimedia5-plugins
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
@@ -170,6 +170,13 @@ jobs:
           cat > AppDir/AppRun << 'EOF'
           #!/bin/bash
           APPDIR="$(dirname "$(readlink -f "$0")")"
+          
+          # Set up library paths for GStreamer and other system libraries
+          export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+          export GST_PLUGIN_SYSTEM_PATH="$APPDIR/usr/lib/gstreamer-1.0:/usr/lib/gstreamer-1.0:$GST_PLUGIN_SYSTEM_PATH"
+          export GST_PLUGIN_SCANNER="$APPDIR/usr/lib/gstreamer-1.0/gst-plugin-scanner"
+          
+          # Run the application
           exec "$APPDIR/usr/bin/Aurion" "$@"
           EOF
           chmod +x AppDir/AppRun
