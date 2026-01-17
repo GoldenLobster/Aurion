@@ -125,7 +125,6 @@ jobs:
             libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
             gstreamer1.0-libav \
-            libgstgl-1.0-0 libgstallocators-1.0-0 \
             libqt5multimedia5-plugins pkg-config
           python -m pip install --upgrade pip
           pip install -r requirements.txt
