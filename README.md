@@ -34,7 +34,10 @@ It’s designed to be a simple yet powerful music player with additional feature
 ### All operating systems
 
 - download an executable from the [releases](https://github.com/GoldenLobster/Aurion/releases/latest)
+or
 - clone this repo, install dependencies(requirements.txt) and then run main.py
+
+- note: for mac users, to run the executable you will have to run `xattr -r -d com.apple.quarantine /path-to-Aurion.app` replacing "path-to-Aurion.app" with the actual path to the executable. This is to allow an unsigned application to run. You would only have to run this once.
 
 ## Showcase
 
