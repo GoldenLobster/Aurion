@@ -177,17 +177,10 @@ jobs:
           
           # Convert ico to png for AppImage
           if [ -f "src/Icons/logo.ico" ]; then
-            convert src/Icons/logo.ico -background none AppDir/logo.png 2>/dev/null || \
-            python3 << 'PYEOF'
-from PIL import Image
-img = Image.open("src/Icons/logo.ico")
-if img.mode != "RGBA":
-    img = img.convert("RGBA")
-img.save("AppDir/logo.png", "PNG")
-PYEOF
+            convert src/Icons/logo.ico -background none AppDir/logo.png 2>/dev/null || true
           fi
           
-          # Ensure logo.png exists
+          # Ensure logo.png exists (fallback to original)
           if [ ! -f "AppDir/logo.png" ] && [ -f "src/Icons/logo.png" ]; then
             cp src/Icons/logo.png AppDir/logo.png
           fi
