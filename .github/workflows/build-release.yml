@@ -138,9 +138,34 @@ jobs:
       - name: Create AppImage
         run: |
           mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/share/icons
           cp dist/Aurion AppDir/usr/bin/
-          cp src/Icons/logo.png AppDir/usr/share/icons/ 2>/dev/null || cp src/Icons/logo.ico AppDir/usr/share/icons/
+          
+          # Create a simple PNG logo for AppImage (convert from ico if needed)
+          if [ -f "src/Icons/logo.png" ]; then
+            cp src/Icons/logo.png AppDir/logo.png
+          else
+            # Convert ico to png using ImageMagick if available, otherwise use a placeholder
+            if command -v convert &> /dev/null; then
+              convert src/Icons/logo.ico AppDir/logo.png
+            else
+              # Create a minimal PNG if conversion fails
+              python3 << 'PYEOF'
+          import os
+          # Create a minimal valid PNG file if no icon available
+          # This is a 1x1 transparent pixel PNG (minimal valid PNG)
+          png_bytes = bytes([
+              0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+              0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+              0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+              0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+              0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+              0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+          ])
+          with open("AppDir/logo.png", "wb") as f:
+              f.write(png_bytes)
+          PYEOF
+            fi
+          fi
           
           cat > AppDir/AppRun << 'EOF'
           #!/bin/bash
