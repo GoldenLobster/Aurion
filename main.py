@@ -125,6 +125,11 @@ def main():
     
     app = QApplication(sys.argv)
     
+    # Set application metadata for all platforms
+    app.setApplicationName("Aurion")
+    app.setApplicationVersion("1.0.0")
+    app.setApplicationDisplayName("Aurion")
+    
     # Initialize application settings and FFmpeg
     initialize_application()
     

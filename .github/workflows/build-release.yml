@@ -46,7 +46,7 @@ jobs:
       
       - name: Build executable
         run: |
-          pyinstaller --onefile --windowed --name "Aurion" --icon src/Icons/logo.ico --add-data "src:src" --distpath "./dist" main.py
+          pyinstaller --onefile --windowed --name "Aurion" --icon "src/Icons/logo.ico" --add-data "src:src" --distpath "./dist" main.py
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -69,13 +69,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller Pillow
+      
+      - name: Convert icon to ICNS format
+        run: |
+          python3 convert_icon_to_icns.py
       
       - name: Build executable
         run: |
           pyinstaller --onefile --windowed \
             --name "Aurion" \
-            --icon src/Icons/logo.ico \
+            --icon "src/Icons/logo.icns" \
             --add-data "src:src" \
             --distpath "./dist" \
             main.py
@@ -85,7 +89,7 @@ jobs:
           mkdir -p Aurion.app/Contents/MacOS
           mkdir -p Aurion.app/Contents/Resources
           mv dist/Aurion Aurion.app/Contents/MacOS/Aurion
-          cp src/Icons/logo.icns Aurion.app/Contents/Resources/ 2>/dev/null || true
+          cp src/Icons/logo.icns Aurion.app/Contents/Resources/Aurion.icns
           cat > Aurion.app/Contents/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -93,10 +97,22 @@ jobs:
           <dict>
             <key>CFBundleName</key>
             <string>Aurion</string>
+            <key>CFBundleDisplayName</key>
+            <string>Aurion</string>
             <key>CFBundleExecutable</key>
             <string>Aurion</string>
             <key>CFBundleIconFile</key>
-            <string>logo</string>
+            <string>Aurion</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.andrewdore.aurion</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleVersion</key>
+            <string>1.0.0</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0.0</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>10.13</string>
           </dict>
           </plist>
           EOF
@@ -125,16 +141,16 @@ jobs:
             libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
             gstreamer1.0-libav \
-            libqt5multimedia5-plugins pkg-config
+            libqt5multimedia5-plugins pkg-config imagemagick
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller Pillow
       
       - name: Build executable with GStreamer bundling
         run: |
           pyinstaller --onefile --windowed \
             --name "Aurion" \
-            --icon src/Icons/logo.ico \
+            --icon "src/Icons/logo.ico" \
             --add-data "src:src" \
             --additional-hooks-dir=. \
             --collect-all gstreamer \
@@ -159,31 +175,21 @@ jobs:
           # Fix permissions
           sudo chown -R $(id -u):$(id -g) AppDir/
           
-          # Create a simple PNG logo for AppImage (convert from ico if needed)
-          if [ -f "src/Icons/logo.png" ]; then
+          # Convert ico to png for AppImage
+          if [ -f "src/Icons/logo.ico" ]; then
+            convert src/Icons/logo.ico -background none AppDir/logo.png 2>/dev/null || \
+            python3 << 'PYEOF'
+from PIL import Image
+img = Image.open("src/Icons/logo.ico")
+if img.mode != "RGBA":
+    img = img.convert("RGBA")
+img.save("AppDir/logo.png", "PNG")
+PYEOF
+          fi
+          
+          # Ensure logo.png exists
+          if [ ! -f "AppDir/logo.png" ] && [ -f "src/Icons/logo.png" ]; then
             cp src/Icons/logo.png AppDir/logo.png
-          else
-            # Convert ico to png using ImageMagick if available, otherwise use a placeholder
-            if command -v convert &> /dev/null; then
-              convert src/Icons/logo.ico AppDir/logo.png
-            else
-              # Create a minimal PNG if conversion fails
-              python3 << 'PYEOF'
-          import os
-          # Create a minimal valid PNG file if no icon available
-          # This is a 1x1 transparent pixel PNG (minimal valid PNG)
-          png_bytes = bytes([
-              0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-              0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-              0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
-              0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-              0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-              0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
-          ])
-          with open("AppDir/logo.png", "wb") as f:
-              f.write(png_bytes)
-          PYEOF
-            fi
           fi
           
           cat > AppDir/AppRun << 'EOF'
