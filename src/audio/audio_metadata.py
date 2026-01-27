@@ -3,7 +3,7 @@ Audio metadata extraction from music files.
 Supports ID3 tags, MP4, FLAC, OGG Vorbis, and other formats via Mutagen.
 """
 
-from mutagen import File as MutagenFile
+from mutagen import File as MutagenFile, MutagenError
 import base64
 
 
@@ -56,7 +56,7 @@ def extract_metadata(file_path):
         
         return (str(title), str(artist))
         
-    except Exception:
+    except (MutagenError, OSError, ValueError, TypeError):
         return ("Unknown Track", "Unknown Artist")
 
 
@@ -94,7 +94,7 @@ def extract_album_art(file_path):
             data = base64.b64decode(audio['metadata_block_picture'][0])
             return data[32:]  # Skip FLAC picture block header
             
-    except Exception:
+    except (MutagenError, OSError, ValueError, TypeError):
         pass
     
     return None

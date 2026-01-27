@@ -14,7 +14,7 @@ from PyQt5.QtGui import QIcon
 
 # Import FFmpeg initialization and configuration
 from src.config.ffmpeg_manager import init_ffmpeg, set_ffmpeg_path, get_search_suggestions
-from src.config.gui_config import init_config, get_config
+from src.config.gui_config import init_config
 from src.config.ffmpeg_locator_dialog import FFmpegLocatorDialog
 
 # Import the main player window
@@ -25,7 +25,7 @@ from src.player_main import AmberolPlayer
 try:
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("com.andrewdore.aurion")
-except Exception:
+except (AttributeError, OSError):
     pass
 
 
@@ -54,7 +54,7 @@ def setup_application_icon(app):
         logo_ico_path = str(icons_dir / "logo.ico")
         if os.path.exists(logo_ico_path):
             app.setWindowIcon(QIcon(logo_ico_path))
-    except Exception:
+    except (OSError, RuntimeError):
         pass
 
 

@@ -13,7 +13,8 @@ from pathlib import Path
 # Add parent directories to path so imports work when run as subprocess
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.ffmpeg_manager import init_ffmpeg, get_ffmpeg_path, get_ffprobe_path, set_ffmpeg_path, get_search_suggestions
+from src.config.ffmpeg_manager import init_ffmpeg, get_ffmpeg_path, set_ffmpeg_path, get_search_suggestions
+from src.config.ffmpeg_locator_dialog import FFmpegLocatorDialog
 
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
@@ -25,31 +26,35 @@ PARENT_PID = os.environ.get("AURION_PARENT_PID")
 if CHILD_LAUNCH:
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("com.andrewdore.aurion")
-    except Exception:
+    except (AttributeError, OSError):
         pass
 
 # -----------------------------
-# Globals initialised after root is created
+# App state container
 # -----------------------------
-root = None
-progress_bar = None
-status_var = None
-current_item_var = None
-search_filter = None
-results_frame = None
-search_entry = None
-url_entry = None
-folder_label = None
+class AppState:
+    def __init__(self):
+        self.root = None
+        self.progress_bar = None
+        self.status_var = None
+        self.current_item_var = None
+        self.search_filter = None
+        self.results_frame = None
+        self.search_entry = None
+        self.url_entry = None
+        self.folder_label = None
 
-results_cache = []
-result_vars = []
-result_widgets = []
-seen_tracks = set()
-downloaded_keys = set()
-download_dir = ""
-tooltips = {}
+        self.results_cache = []
+        self.result_vars = []
+        self.result_widgets = []
+        self.seen_tracks = set()
+        self.download_dir = ""
+        self.tooltips = {}
 
-ytmusic = YTMusic()
+        self.ytmusic = YTMusic()
+
+
+state = AppState()
 
 
 # -----------------------------
@@ -65,8 +70,6 @@ def init_ffmpeg_paths():
         return True
     
     # If not found, prompt user to locate it
-    from ffmpeg_locator_dialog import FFmpegLocatorDialog
-    
     # Create a minimal Tk window for dialog
     temp_root = ctk.CTk()
     temp_root.withdraw()
@@ -96,26 +99,16 @@ def get_ffmpeg_exe():
     return ffmpeg_path
 
 
-def get_ffprobe_exe():
-    """Get the ffprobe executable path"""
-    ffprobe_path = get_ffprobe_path()
-    if not ffprobe_path:
-        show_error("FFprobe not found", 
-                  "FFprobe executable could not be located. Please ensure it is installed.")
-        return None
-    return ffprobe_path
-
-
 def show_error(title, text):
-    if root is not None:
-        root.after(0, lambda: messagebox.showerror(title, text))
+    if state.root is not None:
+        state.root.after(0, lambda: messagebox.showerror(title, text))
     else:
         messagebox.showerror(title, text)
 
 
 def show_info(title, text):
-    if root is not None:
-        root.after(0, lambda: messagebox.showinfo(title, text))
+    if state.root is not None:
+        state.root.after(0, lambda: messagebox.showinfo(title, text))
     else:
         messagebox.showinfo(title, text)
 
@@ -125,23 +118,23 @@ def show_info(title, text):
 # -----------------------------
 def update_progress(percent, text=""):
     """Thread-safe progress updates for the bar and label."""
-    if progress_bar is None or status_var is None:
+    if state.progress_bar is None or state.status_var is None:
         return
 
     def _apply():
-        progress_bar.set(max(0, min(1, percent / 100)))
+        state.progress_bar.set(max(0, min(1, percent / 100)))
         if text:
-            status_var.set(text)
-    root.after(0, _apply)
+            state.status_var.set(text)
+    state.root.after(0, _apply)
 
 
 def set_current_item(text):
-    if current_item_var is None:
+    if state.current_item_var is None:
         return
 
     def _apply():
-        current_item_var.set(text)
-    root.after(0, _apply)
+        state.current_item_var.set(text)
+    state.root.after(0, _apply)
 
 
 def reset_progress():
@@ -150,34 +143,34 @@ def reset_progress():
 
 
 def clear_results():
-    results_cache.clear()
-    seen_tracks.clear()
-    for widget in result_widgets:
+    state.results_cache.clear()
+    state.seen_tracks.clear()
+    for widget in state.result_widgets:
         widget.destroy()
-    result_widgets.clear()
-    result_vars.clear()
+    state.result_widgets.clear()
+    state.result_vars.clear()
 
 
 def add_result_row(text):
-    if results_frame is None:
+    if state.results_frame is None:
         return
     var = ctk.BooleanVar(value=False)
-    checkbox = ctk.CTkCheckBox(results_frame, text=text, variable=var)
+    checkbox = ctk.CTkCheckBox(state.results_frame, text=text, variable=var)
     checkbox.pack(anchor="w", pady=2, fill="x")
-    result_vars.append(var)
-    result_widgets.append(checkbox)
+    state.result_vars.append(var)
+    state.result_widgets.append(checkbox)
 
 
 def selected_indices():
-    return [idx for idx, var in enumerate(result_vars) if var.get()]
+    return [idx for idx, var in enumerate(state.result_vars) if var.get()]
 
 
 def attach_tooltip(widget, text):
     """Lightweight tooltip shown on hover using a CTkToplevel."""
-    state = tooltips.setdefault(widget, {"tw": None, "after": None})
+    state_data = state.tooltips.setdefault(widget, {"tw": None, "after": None})
 
     def show_now():
-        tw = state["tw"]
+        tw = state_data["tw"]
         if tw is None:
             tw = ctk.CTkToplevel(widget)
             tw.withdraw()
@@ -193,24 +186,24 @@ def attach_tooltip(widget, text):
                 pady=4,
             )
             label.pack()
-            state["tw"] = tw
+            state_data["tw"] = tw
 
         x = widget.winfo_rootx() + 20
         y = widget.winfo_rooty() + widget.winfo_height() + 6
         tw.geometry(f"+{x}+{y}")
         tw.deiconify()
-        state["after"] = None
+        state_data["after"] = None
 
     def schedule_show(_event=None):
-        if state["after"]:
-            widget.after_cancel(state["after"])
-        state["after"] = widget.after(2000, show_now)
+        if state_data["after"]:
+            widget.after_cancel(state_data["after"])
+        state_data["after"] = widget.after(2000, show_now)
 
     def hide(_event=None):
-        if state["after"]:
-            widget.after_cancel(state["after"])
-            state["after"] = None
-        tw = state.get("tw")
+        if state_data["after"]:
+            widget.after_cancel(state_data["after"])
+            state_data["after"] = None
+        tw = state_data.get("tw")
         if tw:
             tw.withdraw()
 
@@ -225,7 +218,7 @@ def attach_tooltip(widget, text):
 # yt-dlp download logic
 # -----------------------------
 def download_audio(urls_or_meta):
-    if not download_dir:
+    if not state.download_dir:
         show_error("Error", "Please choose a download folder first.")
         return
 
@@ -285,7 +278,7 @@ def download_audio(urls_or_meta):
         "format": "bestaudio/best",
         "ffmpeg_location": ffmpeg_dir,
         "ignoreerrors": True,
-        "outtmpl": os.path.join(download_dir, "%(artist)s - %(title)s.%(ext)s"),
+        "outtmpl": os.path.join(state.download_dir, "%(artist)s - %(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
         "noplaylist": False,
         "addmetadata": False,
@@ -387,16 +380,16 @@ def add_track_to_results(track, source_label=""):
     artist = track.get("artists", [{}])[0].get("name", "")
     video_id = track.get("videoId")
     key = video_id or (artist.strip(), title.strip())
-    if key in seen_tracks:
+    if key in state.seen_tracks:
         return
-    seen_tracks.add(key)
+    state.seen_tracks.add(key)
 
     display = f"Song | {artist} - {title}"
     if source_label:
         display = f"{display}  [{source_label}]"
     track_copy = dict(track)
     track_copy["resultType"] = "song"
-    results_cache.append(track_copy)
+    state.results_cache.append(track_copy)
     add_result_row(display)
 
 
@@ -491,7 +484,7 @@ def clean_metadata(mp3_path, meta, thumb_path, ffmpeg_dir):
     cmd.append(tmp_path)
 
     try:
-        proc = subprocess.run(
+        subprocess.run(
             cmd,
             check=True,
             stdout=subprocess.PIPE,
@@ -521,10 +514,6 @@ def clean_metadata(mp3_path, meta, thumb_path, ffmpeg_dir):
                         os.remove(path)
                     except Exception:
                         pass
-            try:
-                os.remove(thumb_path)
-            except Exception:
-                pass
 
 
 def preferred_metadata(info_dict):
@@ -698,28 +687,28 @@ def populate_playlist_tracks(playlist_id, source_label="Playlist"):
             clear_results()
             for t in tracks:
                 add_track_to_results(t, source_label=title)
-            status_var.set(f"Loaded {len(tracks)} tracks from {title}")
+            state.status_var.set(f"Loaded {len(tracks)} tracks from {title}")
 
-        root.after(0, apply)
+        state.root.after(0, apply)
 
     threading.Thread(target=worker, daemon=True).start()
 
 
 def search_music():
-    query = search_entry.get().strip()
+    query = state.search_entry.get().strip()
     clear_results()
 
     if not query:
         return
 
     try:
-        results = ytmusic.search(query, filter=search_filter.get(), limit=20)
+        results = state.ytmusic.search(query, filter=state.search_filter.get(), limit=20)
     except Exception as e:
         messagebox.showerror("Search error", str(e))
         return
 
     for r in results:
-        result_type = r.get("resultType") or search_filter.get()
+        result_type = r.get("resultType") or state.search_filter.get()
         if result_type == "song":
             title = r.get("title", "")
             artist = r.get("artists", [{}])[0].get("name", "")
@@ -735,7 +724,7 @@ def search_music():
         else:
             display = r.get("title", "Unknown")
 
-        results_cache.append(r)
+        state.results_cache.append(r)
         add_result_row(display)
 
 
@@ -744,11 +733,11 @@ def load_selection_contents():
     if not selection:
         return
 
-    selected_items = [results_cache[i] for i in selection]
+    selected_items = [state.results_cache[i] for i in selection]
     clear_results()
 
     for data in selected_items:
-        result_type = data.get("resultType") or search_filter.get()
+        result_type = data.get("resultType") or state.search_filter.get()
 
         if result_type == "album":
             browse_id = data.get("browseId")
@@ -784,8 +773,8 @@ def download_selected():
     queued = []  # list of (url, meta_override)
 
     for idx in selection:
-        data = results_cache[idx]
-        result_type = data.get("resultType") or search_filter.get()
+        data = state.results_cache[idx]
+        result_type = data.get("resultType") or state.search_filter.get()
 
         if result_type == "song":
             video_id = data.get("videoId")
@@ -819,24 +808,23 @@ def download_selected():
 # Folder picker
 # -----------------------------
 def choose_folder():
-    global download_dir
     folder = filedialog.askdirectory()
     if folder:
-        download_dir = folder
-        folder_label.configure(text=folder)
+        state.download_dir = folder
+        state.folder_label.configure(text=folder)
 
 
 # -----------------------------
 # Direct URL download
 # -----------------------------
 def download_url():
-    url = url_entry.get().strip()
+    url = state.url_entry.get().strip()
     if not url:
         return
 
     playlist_id = extract_playlist_id(url)
     if playlist_id:
-        status_var.set("Loading playlist tracks...")
+        state.status_var.set("Loading playlist tracks...")
         populate_playlist_tracks(playlist_id)
     else:
         update_progress(0, "Starting download...")
@@ -848,20 +836,17 @@ def download_url():
 # GUI
 # -----------------------------
 def build_gui():
-    global root, status_var, current_item_var, search_filter
-    global results_frame, search_entry, url_entry, folder_label, progress_bar
-
     # Initialize ffmpeg paths before creating GUI
     if not init_ffmpeg_paths():
         show_error("FFmpeg Required", 
                   "FFmpeg could not be found or configured. The application cannot continue without it.")
         return
 
-    root = ctk.CTk()
-    root.title("YouTube Music Downloader")
-    root.geometry("720x600")
-    root.minsize(800, 700)
-    root.configure(padx=8, pady=8)
+    state.root = ctk.CTk()
+    state.root.title("YouTube Music Downloader")
+    state.root.geometry("720x600")
+    state.root.minsize(800, 700)
+    state.root.configure(padx=8, pady=8)
 
     if CHILD_LAUNCH:
         try:
@@ -870,61 +855,61 @@ def build_gui():
         except Exception:
             pass
 
-    status_var = ctk.StringVar(root, value="Idle")
-    current_item_var = ctk.StringVar(root, value="")
-    search_filter = ctk.StringVar(root, value="songs")
+    state.status_var = ctk.StringVar(state.root, value="Idle")
+    state.current_item_var = ctk.StringVar(state.root, value="")
+    state.search_filter = ctk.StringVar(state.root, value="songs")
 
-    ctk.CTkLabel(root, text="Download Folder").pack(pady=(10, 0))
-    ctk.CTkButton(root, text="Choose Folder", command=choose_folder).pack()
-    folder_label = ctk.CTkLabel(root, text="Not selected")
-    folder_label.pack(pady=(0, 10))
+    ctk.CTkLabel(state.root, text="Download Folder").pack(pady=(10, 0))
+    ctk.CTkButton(state.root, text="Choose Folder", command=choose_folder).pack()
+    state.folder_label = ctk.CTkLabel(state.root, text="Not selected")
+    state.folder_label.pack(pady=(0, 10))
 
-    ctk.CTkLabel(root, text="Search YouTube Music").pack()
-    filter_frame = ctk.CTkFrame(root)
+    ctk.CTkLabel(state.root, text="Search YouTube Music").pack()
+    filter_frame = ctk.CTkFrame(state.root)
     filter_frame.pack(pady=(2, 6), fill="x", padx=20)
     ctk.CTkLabel(filter_frame, text="Filter:").pack(side="left", padx=(0, 6))
     ctk.CTkComboBox(
         filter_frame,
-        variable=search_filter,
+        variable=state.search_filter,
         values=["songs", "albums", "playlists"],
         width=140,
         state="readonly",
     ).pack(side="left")
-    search_entry = ctk.CTkEntry(root, placeholder_text="e.g. artist, song, album")
-    search_entry.pack(fill="x", padx=20)
-    ctk.CTkButton(root, text="Search", command=search_music).pack(pady=3)
+    state.search_entry = ctk.CTkEntry(state.root, placeholder_text="e.g. artist, song, album")
+    state.search_entry.pack(fill="x", padx=20)
+    ctk.CTkButton(state.root, text="Search", command=search_music).pack(pady=3)
 
-    results_frame = ctk.CTkScrollableFrame(root)
-    results_frame.pack(fill="both", expand=True, pady=3, padx=20)
+    state.results_frame = ctk.CTkScrollableFrame(state.root)
+    state.results_frame.pack(fill="both", expand=True, pady=3, padx=20)
 
-    download_btn = ctk.CTkButton(root, text="➕ Download Selected", command=download_selected)
+    download_btn = ctk.CTkButton(state.root, text="➕ Download Selected", command=download_selected)
     download_btn.pack(pady=3)
     attach_tooltip(download_btn, "Downloads the selected tracks")
-    load_btn = ctk.CTkButton(root, text="Load Tracks from Selection", command=load_selection_contents)
+    load_btn = ctk.CTkButton(state.root, text="Load Tracks from Selection", command=load_selection_contents)
     load_btn.pack(pady=(0, 10))
     attach_tooltip(
         load_btn,
         "Load tracks from selected album or playlist - useful if you only want to download specific tracks from an album or playlist",
     )
 
-    ctk.CTkLabel(root, text="Or paste a direct YouTube / YouTube Music URL").pack(pady=(5, 0))
-    url_entry = ctk.CTkEntry(root, placeholder_text="https://...")
-    url_entry.pack(fill="x", padx=20)
-    url_btn = ctk.CTkButton(root, text="Download URL / Fetch playlist", command=download_url)
+    ctk.CTkLabel(state.root, text="Or paste a direct YouTube / YouTube Music URL").pack(pady=(5, 0))
+    state.url_entry = ctk.CTkEntry(state.root, placeholder_text="https://...")
+    state.url_entry.pack(fill="x", padx=20)
+    url_btn = ctk.CTkButton(state.root, text="Download URL / Fetch playlist", command=download_url)
     url_btn.pack(pady=3)
     attach_tooltip(
         url_btn,
         "Directly download a song or fetch albums and playlist for download",
     )
 
-    progress_frame = ctk.CTkFrame(root)
+    progress_frame = ctk.CTkFrame(state.root)
     progress_frame.pack(fill="x", pady=5, padx=20)
     ctk.CTkLabel(progress_frame, text="Progress").pack(anchor="w")
-    progress_bar = ctk.CTkProgressBar(progress_frame)
-    progress_bar.pack(fill="x", pady=(4, 2))
-    progress_bar.set(0)
-    ctk.CTkLabel(progress_frame, textvariable=status_var).pack(anchor="w")
-    ctk.CTkLabel(progress_frame, textvariable=current_item_var, justify="left").pack(anchor="w", fill="x")
+    state.progress_bar = ctk.CTkProgressBar(progress_frame)
+    state.progress_bar.pack(fill="x", pady=(4, 2))
+    state.progress_bar.set(0)
+    ctk.CTkLabel(progress_frame, textvariable=state.status_var).pack(anchor="w")
+    ctk.CTkLabel(progress_frame, textvariable=state.current_item_var, justify="left").pack(anchor="w", fill="x")
 
 
 if __name__ == "__main__":
@@ -945,5 +930,5 @@ if __name__ == "__main__":
         t.start()
 
     build_gui()
-    root.mainloop()
+    state.root.mainloop()
 

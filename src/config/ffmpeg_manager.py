@@ -4,12 +4,12 @@ Supports system-installed ffmpeg, local binaries, and user-specified paths.
 Works cross-platform (Windows, Linux, macOS).
 """
 
-import os
+from __future__ import annotations
+
 import sys
 import shutil
-import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, List
 
 
 class FFmpegManager:
@@ -121,7 +121,7 @@ class FFmpegManager:
         return None
     
     @staticmethod
-    def get_system_search_paths() -> list[str]:
+    def get_system_search_paths() -> List[str]:
         """Get list of standard system paths to search for ffmpeg"""
         paths = []
         
@@ -195,6 +195,6 @@ def is_ffmpeg_available() -> bool:
     return _manager.is_available()
 
 
-def get_search_suggestions() -> list[str]:
+def get_search_suggestions() -> List[str]:
     """Get list of common system paths to suggest to user"""
     return _manager.get_system_search_paths()

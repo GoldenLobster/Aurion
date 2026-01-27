@@ -16,15 +16,14 @@ import io
 import json
 import subprocess
 from pathlib import Path
-from collections import OrderedDict
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QSlider, QLabel, QFileDialog,
-                             QListWidget, QListWidgetItem, QScrollArea,
-                             QMenu, QGraphicsBlurEffect, QSizePolicy, QGraphicsOpacityEffect,
-                             QToolButton, QFrame, QLineEdit, QDialog)
-from PyQt5.QtCore import Qt, QUrl, QTimer, pyqtSignal, QSize, QPoint, QPropertyAnimation, QEasingCurve, pyqtProperty, QParallelAnimationGroup, QAbstractAnimation, QRect, QEvent
-from PyQt5.QtGui import QPixmap, QPainter, QColor, QPen, QLinearGradient, QPainterPath, QImage, QIcon, QCursor
+                             QListWidgetItem, QScrollArea,
+                             QGraphicsOpacityEffect,
+                             QToolButton, QLineEdit, QDialog)
+from PyQt5.QtCore import Qt, QUrl, QTimer, QSize, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect, QEvent
+from PyQt5.QtGui import QPixmap, QPainter, QColor, QIcon, QCursor
 from PyQt5.QtWidgets import QAction
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from mutagen import File as MutagenFile
@@ -32,17 +31,17 @@ from PIL import Image
 
 # Import helper modules
 from src.core.cache import LRUCache
-from src.ui.ui_widgets import WaveformWidget, QueueItemWidget, QueueWidget, BlurredBackground
-from src.ui.ui_dialogs import SettingsDialog, OverlayPanel
-from src.audio.audio_metadata import extract_metadata, extract_album_art
-from src.audio.audio_processing import compute_waveform, get_dominant_color
+from src.core.playlist import PlaylistManager
+from src.ui.ui_widgets import WaveformWidget, QueueItemWidget, QueueWidget, BlurredBackground, ScalableAlbumArtLabel
+from src.ui.ui_dialogs import OverlayPanel, SettingsTab, MiniControlBar, DownloaderTab
+from src.audio.audio_metadata import extract_album_art
 from src.config.gui_config import get_config
 
 # Set Windows AppUserModelID before creating QApplication
 try:
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("com.andrewdore.aurion")
-except Exception:
+except (AttributeError, OSError):
     pass
 
 class AmberolPlayer(QMainWindow):
@@ -99,8 +98,9 @@ class AmberolPlayer(QMainWindow):
         self.using_primary = True
         
         # Cache for preloaded background data (decoded/scaled pixmaps) with size limits
-        self.album_art_pixmap_cache = LRUCache(self.ALBUM_ART_CACHE_SIZE)
-        self.dominant_color_cache = LRUCache(self.DOMINANT_COLOR_CACHE_SIZE)
+        self.playlist_manager = PlaylistManager(self.ALBUM_ART_CACHE_SIZE, self.DOMINANT_COLOR_CACHE_SIZE)
+        self.album_art_pixmap_cache = self.playlist_manager.album_art_pixmap_cache
+        self.dominant_color_cache = self.playlist_manager.dominant_color_cache
 
         # Audio file detection helpers
         self.audio_extensions = ('.mp3', '.flac', '.ogg', '.wav', '.m4a', '.aac', '.opus')
@@ -124,8 +124,12 @@ class AmberolPlayer(QMainWindow):
         self.icon_repeat_one = QIcon(str(self.icons_dir / "repeat-1.svg"))
         self.icon_menu = QIcon(str(self.icons_dir / "menu.svg"))
         self.icon_plus = QIcon(str(self.icons_dir / "plus.svg"))
+        self.icon_folder = QIcon(str(self.icons_dir / "folder.svg"))
         self.icon_settings = QIcon(str(self.icons_dir / "settings.svg"))
         self.icon_playing = QIcon(str(self.icons_dir / "playing.svg"))
+        self.icon_volume_none = QIcon(str(self.icons_dir / "no-volume.svg"))
+        self.icon_volume_low = QIcon(str(self.icons_dir / "low-to-medium-volume.svg"))
+        self.icon_volume_high = QIcon(str(self.icons_dir / "medium-to-high-volume.svg"))
 
         # Playlist data
         self.playlist = []
@@ -153,6 +157,9 @@ class AmberolPlayer(QMainWindow):
         # Album art crossfade animation (no state tracking needed)
         self.album_art_animation = None
         
+        # Text labels (title and artist) crossfade animations
+        self.text_animation = None
+        
         # Queue sidebar slide animation
         self.queue_animation = None
         
@@ -169,6 +176,9 @@ class AmberolPlayer(QMainWindow):
         self.crossfade_in_progress = False
         self.crossfade_target_index = None
         self.crossfade_start_time = 0.0
+        
+        # Text transition animation setting
+        self.text_fade_enabled = True
         
         # Settings
         self.settings_file = os.path.join(Path.home(), '.amberol_settings.json')
@@ -310,8 +320,8 @@ class AmberolPlayer(QMainWindow):
         main_container.setMouseTracking(True)
         self.setCentralWidget(main_container)
         
-        # Main layout - will be horizontal with player + optional queue
-        main_layout = QHBoxLayout(main_container)
+        # Main layout - will be vertical with stacked views (player or settings) + optional mini control bar
+        main_layout = QVBoxLayout(main_container)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
@@ -321,6 +331,13 @@ class AmberolPlayer(QMainWindow):
         self.background.lower()
         # Defer geometry setup until window is shown and laid out
         self.background_initialized = False
+        
+        # === STACKED VIEWS (Player or Settings) ===
+        stacked_container = QWidget()
+        stacked_container.setStyleSheet("background-color: transparent;")
+        stacked_layout = QHBoxLayout(stacked_container)
+        stacked_layout.setContentsMargins(0, 0, 0, 0)
+        stacked_layout.setSpacing(0)
         
         # === MAIN PLAYER VIEW ===
         player_view = QWidget()
@@ -345,10 +362,11 @@ class AmberolPlayer(QMainWindow):
         left_side_layout.setSpacing(self.gui_config.button_spacing)
         
         self.change_folder_btn = QToolButton()
-        self.change_folder_btn.setText("📁")
+        self.change_folder_btn.setIcon(self.icon_folder)
+        self.change_folder_btn.setIconSize(QSize(20, 20))
         self.change_folder_btn.setToolTip("Change Music Folder")
         self.change_folder_btn.setFixedSize(self.gui_config.button_size, self.gui_config.button_size)
-        self.change_folder_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.change_folder_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.change_folder_btn.setStyleSheet("""
             QToolButton {
                 background-color: rgba(255, 255, 255, 0.1);
@@ -369,6 +387,7 @@ class AmberolPlayer(QMainWindow):
         self.add_btn.setIconSize(QSize(20, 20))
         self.add_btn.setFixedSize(self.gui_config.button_size, self.gui_config.button_size)
         self.add_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.add_btn.setToolTip("YouTube Music Downloader")
         self.add_btn.setStyleSheet("""
             QToolButton {
                 background-color: rgba(255, 255, 255, 0.1);
@@ -379,7 +398,7 @@ class AmberolPlayer(QMainWindow):
                 background-color: rgba(255, 255, 255, 0.2);
             }
         """)
-        self.add_btn.clicked.connect(self.open_downloader_app)
+        self.add_btn.clicked.connect(self.toggle_downloader_tab)
         left_side_layout.addWidget(self.add_btn, alignment=Qt.AlignLeft)
 
         self.queue_btn = QToolButton()
@@ -449,6 +468,7 @@ class AmberolPlayer(QMainWindow):
         
         self.minimize_btn = QToolButton()
         self.minimize_btn.setIcon(QIcon(str(self.icons_dir / "minimize.svg")))
+
         self.minimize_btn.setIconSize(QSize(icon_size, icon_size))
         self.minimize_btn.setFixedSize(btn_size, btn_size)
         self.minimize_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -498,7 +518,8 @@ class AmberolPlayer(QMainWindow):
         self.art_widget = art_widget  # Store reference for resizing
 
         # Create two labels for crossfading
-        self.art_a = QLabel(art_widget)
+        self.art_a = ScalableAlbumArtLabel()
+        self.art_a.setParent(art_widget)
         # Don't set fixed size - will be calculated in resizeEvent
         self.art_a.move(0, 0)  # Position at top-left of parent
         self.art_a.setAlignment(Qt.AlignCenter)
@@ -508,14 +529,13 @@ class AmberolPlayer(QMainWindow):
             font-size: 100px;
         """)
         self.art_a.setText("🎵")
-        self.art_a.setScaledContents(True)
 
-        self.art_b = QLabel(art_widget)
+        self.art_b = ScalableAlbumArtLabel()
+        self.art_b.setParent(art_widget)
         # Don't set fixed size - will be calculated in resizeEvent
         self.art_b.move(0, 0)  # Position at same top-left of parent (overlay)
         self.art_b.setAlignment(Qt.AlignCenter)
         self.art_b.setStyleSheet(self.art_a.styleSheet())
-        self.art_b.setScaledContents(True)
 
         # Create opacity effects for each
         self.opacity_a = QGraphicsOpacityEffect(self.art_a)
@@ -540,25 +560,86 @@ class AmberolPlayer(QMainWindow):
         info_layout = QVBoxLayout(info_container)
         info_layout.setContentsMargins(30, 20, 30, 10)
         
-        self.title_label = QLabel("No track playing")
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setWordWrap(True)
-        self.title_label.setStyleSheet("""
+        # Title labels with crossfade support (stacked)
+        title_widget = QWidget()
+        title_widget.setStyleSheet("background-color: transparent;")
+        title_layout = QVBoxLayout(title_widget)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(0)
+        
+        self.title_a = QLabel("No track playing")
+        self.title_a.setAlignment(Qt.AlignCenter)
+        self.title_a.setWordWrap(True)
+        self.title_a.setStyleSheet("""
             font-size: 24px;
             font-weight: bold;
             color: white;
+            background-color: transparent;
         """)
-        info_layout.addWidget(self.title_label)
+        title_layout.addWidget(self.title_a)
         
-        self.artist_label = QLabel("")
-        self.artist_label.setAlignment(Qt.AlignCenter)
-        self.artist_label.setWordWrap(True)
-        self.artist_label.setStyleSheet("""
+        self.title_b = QLabel("No track playing")
+        self.title_b.setAlignment(Qt.AlignCenter)
+        self.title_b.setWordWrap(True)
+        self.title_b.setStyleSheet(self.title_a.styleSheet())
+        
+        # Create opacity effects for title labels
+        self.title_opacity_a = QGraphicsOpacityEffect(self.title_a)
+        self.title_opacity_a.setOpacity(1.0)
+        self.title_a.setGraphicsEffect(self.title_opacity_a)
+        
+        self.title_opacity_b = QGraphicsOpacityEffect(self.title_b)
+        self.title_opacity_b.setOpacity(0.0)
+        self.title_b.setGraphicsEffect(self.title_opacity_b)
+        
+        # Add title_b as overlay (absolute positioning within title_widget)
+        self.title_b.setParent(title_widget)
+        self.title_b.setGeometry(0, 0, title_widget.width(), title_widget.height())
+        
+        # Keep main title_a in layout for size reference
+        self.title_front = 'A'
+        
+        info_layout.addWidget(title_widget)
+        
+        # Artist labels with crossfade support (stacked)
+        artist_widget = QWidget()
+        artist_widget.setStyleSheet("background-color: transparent;")
+        artist_layout = QVBoxLayout(artist_widget)
+        artist_layout.setContentsMargins(0, 0, 0, 0)
+        artist_layout.setSpacing(0)
+        
+        self.artist_a = QLabel("")
+        self.artist_a.setAlignment(Qt.AlignCenter)
+        self.artist_a.setWordWrap(True)
+        self.artist_a.setStyleSheet("""
             font-size: 16px;
             color: rgba(255, 255, 255, 0.7);
             margin-top: 5px;
+            background-color: transparent;
         """)
-        info_layout.addWidget(self.artist_label)
+        artist_layout.addWidget(self.artist_a)
+        
+        self.artist_b = QLabel("")
+        self.artist_b.setAlignment(Qt.AlignCenter)
+        self.artist_b.setWordWrap(True)
+        self.artist_b.setStyleSheet(self.artist_a.styleSheet())
+        
+        # Create opacity effects for artist labels
+        self.artist_opacity_a = QGraphicsOpacityEffect(self.artist_a)
+        self.artist_opacity_a.setOpacity(1.0)
+        self.artist_a.setGraphicsEffect(self.artist_opacity_a)
+        
+        self.artist_opacity_b = QGraphicsOpacityEffect(self.artist_b)
+        self.artist_opacity_b.setOpacity(0.0)
+        self.artist_b.setGraphicsEffect(self.artist_opacity_b)
+        
+        # Add artist_b as overlay
+        self.artist_b.setParent(artist_widget)
+        self.artist_b.setGeometry(0, 0, artist_widget.width(), artist_widget.height())
+        
+        self.artist_front = 'A'
+        
+        info_layout.addWidget(artist_widget)
         
         # Empty-state message (appears below artist label)
         self.empty_label = QLabel("No music loaded. Add files or choose a folder to get started.")
@@ -731,9 +812,12 @@ class AmberolPlayer(QMainWindow):
         volume_layout = QHBoxLayout(volume_container)
         volume_layout.setContentsMargins(30, 0, 30, 20)
         
-        volume_icon = QLabel("🔊")
-        volume_icon.setStyleSheet("color: white; font-size: 16px;")
-        volume_layout.addWidget(volume_icon)
+        self.volume_icon = QLabel()
+        self.volume_icon.setFixedSize(24, 24)
+        self.volume_icon.setScaledContents(True)
+        volume_icon_pixmap = self.icon_volume_low.pixmap(24, 24)
+        self.volume_icon.setPixmap(volume_icon_pixmap)
+        volume_layout.addWidget(self.volume_icon)
         
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
@@ -757,6 +841,7 @@ class AmberolPlayer(QMainWindow):
             }
         """)
         self.volume_slider.valueChanged.connect(self.change_volume)
+        self.volume_slider.valueChanged.connect(self._update_volume_icon)
         volume_layout.addWidget(self.volume_slider)
         
         player_layout.addWidget(volume_container)
@@ -853,17 +938,63 @@ class AmberolPlayer(QMainWindow):
         
         queue_container_layout.addWidget(self.side_scroll_area)
         
+        # === ADD PLAYER AND QUEUE TO STACKED LAYOUT ===
+        stacked_layout.addWidget(player_view, 1)  # Player view takes most space
+        stacked_layout.addWidget(queue_container, 0)  # Queue doesn't stretch
+        queue_container.setVisible(False)
+        
+        # === SETTINGS TAB ===
+        self.settings_tab = SettingsTab(parent=None, initial_value=self.crossfade_duration_secs, text_fade_enabled=self.text_fade_enabled)
+        self.settings_tab.crossfadeChanged.connect(self.set_crossfade_duration)
+        self.settings_tab.textFadeChanged.connect(self.set_text_fade_enabled)
+        self.settings_tab.closeRequested.connect(self.close_settings_tab)
+        self.settings_tab.setVisible(False)
+        stacked_layout.addWidget(self.settings_tab, 1)  # Stretch to fill
+        
+        # === DOWNLOADER TAB ===
+        self.downloader_tab = DownloaderTab(parent=None)
+        self.downloader_tab.closeRequested.connect(self.close_downloader_tab)
+        self.downloader_tab.setVisible(False)
+        stacked_layout.addWidget(self.downloader_tab, 1)  # Stretch to fill
+        
+        # === MINI CONTROL BAR ===
+        # Prepare icons dict for mini control bar
+        icons_dict = {
+            'play': self.icon_play,
+            'pause': self.icon_pause,
+            'skip_fwd': self.icon_skip_fwd,
+            'skip_back': self.icon_skip_back,
+            'shuffle': self.icon_shuffle,
+            'repeat_all': self.icon_repeat_all,
+            'repeat_one': self.icon_repeat_one,
+            'volume_none': self.icon_volume_none,
+            'volume_low': self.icon_volume_low,
+            'volume_high': self.icon_volume_high,
+        }
+        self.mini_control_bar = MiniControlBar(icons=icons_dict)
+        self.mini_control_bar.playPauseRequested.connect(self.toggle_play)
+        self.mini_control_bar.nextTrackRequested.connect(self.next_track)
+        self.mini_control_bar.previousTrackRequested.connect(self.previous_track)
+        self.mini_control_bar.shuffleToggleRequested.connect(self.toggle_shuffle)
+        self.mini_control_bar.repeatToggleRequested.connect(self.toggle_repeat)
+        self.mini_control_bar.volumeChanged.connect(self._on_mini_volume_changed)
+        self.mini_control_bar.setVisible(False)  # Hidden until settings tab is opened
+        # Sync mini control bar volume to match main window
+        self.mini_control_bar.volume_slider.blockSignals(True)
+        self.mini_control_bar.volume_slider.setValue(self.volume_slider.value())
+        self.mini_control_bar.volume_slider.blockSignals(False)
+        self.mini_control_bar.update_volume_icon(self.volume_slider.value())
+        
+        # Add stacked container and mini control bar to main layout
+        main_layout.addWidget(stacked_container, 1)  # Stretch to fill
+        main_layout.addWidget(self.mini_control_bar, 0)  # Mini bar at bottom
+        
         # Store references for responsive behavior
         self.queue_container = queue_container
         self.player_view = player_view
+        self.stacked_container = stacked_container
+        self.stacked_layout = stacked_layout
         self.main_layout = main_layout
-        
-        # Add player view to main layout
-        main_layout.addWidget(player_view, 1)  # Stretch to fill available space
-        
-        # Add queue container to main layout (initially invisible for small windows)
-        main_layout.addWidget(queue_container, 0)  # Don't stretch
-        queue_container.setVisible(False)
         
         # Create dark backdrop for overlay mode
         self.overlay_backdrop = QLabel(main_container)
@@ -910,17 +1041,60 @@ class AmberolPlayer(QMainWindow):
         # Enable drag and drop
         self.setAcceptDrops(True)
 
-        # Lazy-create settings dialog on demand
-        self.settings_dialog = None
+        # Track settings tab state
+        self.settings_tab_open = False
+        
+        # Track downloader tab state
+        self.downloader_tab_open = False
 
         self.update_empty_state()
     
     def _is_in_header_area(self, global_pos):
         local_pos = self.mapFromGlobal(global_pos)
+        
+        # Don't allow dragging if in the mini control bar area
+        if self.mini_control_bar.isVisible():
+            mini_bar_y = self.height() - self.mini_control_bar.height()
+            if local_pos.y() >= mini_bar_y:
+                return False
+        
+        # If settings or downloader tab is open, allow dragging at the top (title area with close button)
+        # but don't allow dragging over sliders and interactive controls
+        if self.settings_tab_open or self.downloader_tab_open:
+            # Only allow dragging in the top 100px where the title and close button are
+            if local_pos.y() < 100:
+                # Check if we're clicking on the close button area
+                close_button_area = 1200  # Approximate x position of close button
+                if local_pos.x() > close_button_area:
+                    return False
+                return True
+            return False
+        
         header_height = 230
         window_width = self.width()
         right_side_width = 200
         return local_pos.y() < header_height and local_pos.x() < (window_width - right_side_width - 20)
+
+    def _is_over_header_control(self, global_pos):
+        """Return True when the cursor is over any header control button."""
+        controls = [
+            getattr(self, "change_folder_btn", None),
+            getattr(self, "add_btn", None),
+            getattr(self, "queue_btn", None),
+            getattr(self, "settings_btn", None),
+            getattr(self, "minimize_btn", None),
+            getattr(self, "maximize_btn", None),
+            getattr(self, "close_btn", None),
+        ]
+        for btn in controls:
+            if btn is None or not btn.isVisible():
+                continue
+            try:
+                if btn.rect().contains(btn.mapFromGlobal(global_pos)):
+                    return True
+            except Exception:
+                continue
+        return False
 
     def _get_resize_region(self, global_pos):
         if self.isMaximized():
@@ -1022,6 +1196,8 @@ class AmberolPlayer(QMainWindow):
             target_widget = self.childAt(self.mapFromGlobal(global_pos))
             if isinstance(target_widget, (QToolButton, QPushButton)):
                 return False
+            if self._is_over_header_control(global_pos):
+                return False
             self.drag_position = global_pos - self.frameGeometry().topLeft()
             self.is_dragging_header = True
             return True
@@ -1091,11 +1267,27 @@ class AmberolPlayer(QMainWindow):
             self.background.show()
             self.background_initialized = True
             
+            # Force layout processing to ensure all widget geometries are properly calculated
+            # This fixes issues with button hitboxes and album art sizing on startup
+            main_container.updateGeometry()
+            QApplication.processEvents()
+            
             # Initialize responsive layout after UI is fully set up
             self._update_responsive_layout()
+            
+            # Defer final geometry updates to ensure everything is fully laid out
+            # This is critical for button hitboxes and album art sizing
+            QTimer.singleShot(0, self._finalize_startup_geometry)
 
         # Set initial album art size based on available space
         self._update_art_size()
+    
+    def _finalize_startup_geometry(self):
+        """Final geometry updates after the event loop has fully processed the initial layout."""
+        # Force all widgets to recalculate their geometry
+        self.centralWidget().updateGeometry()
+        self._update_art_size()
+        QApplication.processEvents()
     
     def toggle_maximize(self):
         """Toggle between maximized and normal window state"""
@@ -1187,6 +1379,13 @@ class AmberolPlayer(QMainWindow):
     def _update_responsive_layout(self):
         """Update responsive layout based on window width only (dynamic threshold from config)"""
         if not hasattr(self, 'queue_container') or not hasattr(self, 'overlay_panel'):
+            return
+
+        # When the settings or downloader tab is open, keep all queue UIs hidden so they cannot overlap
+        if getattr(self, 'settings_tab_open', False) or getattr(self, 'downloader_tab_open', False):
+            self.queue_container.setVisible(False)
+            self.queue_container.setFixedWidth(0)
+            self.overlay_panel.hide()
             return
         
         window_width = self.width()
@@ -1325,7 +1524,10 @@ class AmberolPlayer(QMainWindow):
             def on_hide_finished():
                 self.queue_container.setVisible(False)
                 self.queue_container.setFixedWidth(0)
-                self._update_art_size()
+                # Force layout update before updating art size
+                if hasattr(self, 'player_view'):
+                    self.player_view.updateGeometry()
+                QTimer.singleShot(0, self._update_art_size)
             
             anim_group.finished.connect(on_hide_finished)
             self.queue_animation = anim_group
@@ -1476,21 +1678,100 @@ class AmberolPlayer(QMainWindow):
             traceback.print_exc()
     
     def open_files(self):
-        files, _ = QFileDialog.getOpenFileNames(
-            self, "Open Audio Files", "",
-            "Audio Files (*.mp3 *.flac *.ogg *.wav *.m4a *.aac *.opus);;All Files (*)"
-        )
-        if files:
-            self.add_files_to_playlist(files)
+        try:
+            dlg = QFileDialog(self, "Open Audio Files")
+            dlg.setFileMode(QFileDialog.ExistingFiles)
+            dlg.setNameFilter("Audio Files (*.mp3 *.flac *.ogg *.wav *.m4a *.aac *.opus);;All Files (*)")
+            dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+            dlg.setStyleSheet(
+                """
+                QFileDialog { background-color: #10151f; color: white; }
+                QListView, QTreeView { background-color: rgba(255,255,255,0.08); color: white; }
+                QLineEdit { background-color: rgba(255,255,255,0.12); color: white; }
+                QLabel { color: white; }
+                QComboBox, QComboBox:editable { background-color: rgba(255,255,255,0.12); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; }
+                QComboBox::drop-down { border: none; width: 22px; }
+                QComboBox QAbstractItemView { background-color: #1a2332; color: white; selection-background-color: #5294e2; }
+                QPushButton {
+                    background-color: rgba(255, 255, 255, 0.08);
+                    border: none; border-radius: 6px; color: white; padding: 6px 12px;
+                }
+                QPushButton:hover { background-color: rgba(255, 255, 255, 0.14); }
+                """
+            )
+            if dlg.exec_() == QDialog.Accepted:
+                files = dlg.selectedFiles()
+                if files:
+                    self.add_files_to_playlist(files)
+        except Exception:
+            files, _ = QFileDialog.getOpenFileNames(
+                self, "Open Audio Files", "",
+                "Audio Files (*.mp3 *.flac *.ogg *.wav *.m4a *.aac *.opus);;All Files (*)"
+            )
+            if files:
+                self.add_files_to_playlist(files)
     
     def open_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Open Folder")
-        if folder:
-            self.load_folder_files(folder)
+        try:
+            dlg = QFileDialog(self, "Open Folder")
+            dlg.setFileMode(QFileDialog.Directory)
+            dlg.setOption(QFileDialog.ShowDirsOnly, True)
+            dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+            dlg.setStyleSheet(
+                """
+                QFileDialog { background-color: #10151f; color: white; }
+                QListView, QTreeView { background-color: rgba(255,255,255,0.08); color: white; }
+                QLineEdit { background-color: rgba(255,255,255,0.12); color: white; }
+                QLabel { color: white; }
+                QComboBox, QComboBox:editable { background-color: rgba(255,255,255,0.12); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; }
+                QComboBox::drop-down { border: none; width: 22px; }
+                QComboBox QAbstractItemView { background-color: #1a2332; color: white; selection-background-color: #5294e2; }
+                QPushButton {
+                    background-color: rgba(255, 255, 255, 0.08);
+                    border: none; border-radius: 6px; color: white; padding: 6px 12px;
+                }
+                QPushButton:hover { background-color: rgba(255, 255, 255, 0.14); }
+                """
+            )
+            if dlg.exec_() == QDialog.Accepted:
+                files = dlg.selectedFiles()
+                folder = files[0] if files else ""
+                if folder:
+                    self.load_folder_files(folder)
+        except Exception:
+            folder = QFileDialog.getExistingDirectory(self, "Open Folder")
+            if folder:
+                self.load_folder_files(folder)
     
     def choose_folder(self):
         """Choose a folder and remember it for future sessions"""
-        folder = QFileDialog.getExistingDirectory(self, "Choose Music Folder")
+        folder = ""
+        try:
+            dlg = QFileDialog(self, "Choose Music Folder")
+            dlg.setFileMode(QFileDialog.Directory)
+            dlg.setOption(QFileDialog.ShowDirsOnly, True)
+            dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+            dlg.setStyleSheet(
+                """
+                QFileDialog { background-color: #10151f; color: white; }
+                QListView, QTreeView { background-color: rgba(255,255,255,0.08); color: white; }
+                QLineEdit { background-color: rgba(255,255,255,0.12); color: white; }
+                QLabel { color: white; }
+                QComboBox, QComboBox:editable { background-color: rgba(255,255,255,0.12); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; }
+                QComboBox::drop-down { border: none; width: 22px; }
+                QComboBox QAbstractItemView { background-color: #1a2332; color: white; selection-background-color: #5294e2; }
+                QPushButton {
+                    background-color: rgba(255, 255, 255, 0.08);
+                    border: none; border-radius: 6px; color: white; padding: 6px 12px;
+                }
+                QPushButton:hover { background-color: rgba(255, 255, 255, 0.14); }
+                """
+            )
+            if dlg.exec_() == QDialog.Accepted:
+                files = dlg.selectedFiles()
+                folder = files[0] if files else ""
+        except Exception:
+            folder = QFileDialog.getExistingDirectory(self, "Choose Music Folder")
         if folder:
             # Clear current playlist before loading new folder
             self.playlist.clear()
@@ -1691,6 +1972,7 @@ class AmberolPlayer(QMainWindow):
             # Rebuild album art cache without removed items
             old_pixmap_cache = self.album_art_pixmap_cache
             self.album_art_pixmap_cache = LRUCache(old_pixmap_cache.max_size)
+            self.playlist_manager.album_art_pixmap_cache = self.album_art_pixmap_cache
             for key, val in old_pixmap_cache.cache.items():
                 if key not in remove_set:
                     self.album_art_pixmap_cache.set(key, val)
@@ -1698,6 +1980,7 @@ class AmberolPlayer(QMainWindow):
             # Rebuild dominant color cache without removed items
             old_color_cache = self.dominant_color_cache
             self.dominant_color_cache = LRUCache(old_color_cache.max_size)
+            self.playlist_manager.dominant_color_cache = self.dominant_color_cache
             for key, val in old_color_cache.cache.items():
                 if key not in remove_set:
                     self.dominant_color_cache.set(key, val)
@@ -1799,8 +2082,17 @@ class AmberolPlayer(QMainWindow):
         self.current_index = -1
         self.active_player.stop()
         self.preload_player.stop()
-        self.title_label.setText("No track playing")
-        self.artist_label.setText("")
+        # Reset text labels to default state (directly, no animation needed for clearing)
+        self.title_a.setText("No track playing")
+        self.title_b.setText("No track playing")
+        self.artist_a.setText("")
+        self.artist_b.setText("")
+        self.title_front = 'A'
+        self.artist_front = 'A'
+        self.title_opacity_a.setOpacity(1.0)
+        self.title_opacity_b.setOpacity(0.0)
+        self.artist_opacity_a.setOpacity(1.0)
+        self.artist_opacity_b.setOpacity(0.0)
         self.background.set_from_color(QColor(30, 30, 30, 200), use_gradient=False)
         # Reset queue panel colors to default dark tone when clearing
         self.update_queue_colors(QColor(30, 30, 30))
@@ -1910,12 +2202,19 @@ class AmberolPlayer(QMainWindow):
             file_path = self.playlist[index]
             
             # --- DEFER METADATA ---
-            # Immediately update labels to show loading state, then defer real metadata read
-            # to prevent blocking the UI thread before animations can start.
+            # Immediately update the destination (hidden) label to show filename as placeholder,
+            # then defer real metadata read to trigger the fade animation.
+            # This avoids showing the filename on screen before fading to metadata.
             filename = os.path.basename(file_path)
             name_without_ext = os.path.splitext(filename)[0]
-            self.title_label.setText(name_without_ext)
-            self.artist_label.setText("...")
+            
+            # Update only the destination (hidden) labels, not the visible ones
+            if self.title_front == 'A':
+                self.title_b.setText(name_without_ext)
+                self.artist_b.setText("...")
+            else:
+                self.title_a.setText(name_without_ext)
+                self.artist_a.setText("...")
 
             # Update dynamic background (animations start immediately)
             self.update_dynamic_background(update_id=current_update_id)
@@ -1937,21 +2236,45 @@ class AmberolPlayer(QMainWindow):
                     widget.set_playing(i == index)
 
     def update_metadata_labels(self, file_path, update_id):
-        """Update title and artist labels after deferred metadata extraction."""
+        """Update title and artist labels after deferred metadata extraction with fade animation."""
         # Check if this update is still valid (i.e., user hasn't skipped again)
         if update_id != self.pending_update_id:
             return
 
         title, artist = self.extract_metadata(file_path)
         
-        # Only update if a real title was found, otherwise keep filename
-        if title:
-            self.title_label.setText(title)
+        # Prepare title (use filename without extension as fallback)
+        display_title = title if title else os.path.splitext(os.path.basename(file_path))[0]
         
-        if artist:
-            self.artist_label.setText(artist)
+        # Prepare artist
+        display_artist = artist if artist else "Unknown Artist"
+        
+        # Ensure sizes and geometries are up to date before animating to avoid jumps/clipping
+        try:
+            self._sync_text_label_sizes()
+            self._update_text_label_geometries()
+        except Exception:
+            pass
+
+        # Update labels with or without animation based on setting
+        if self.text_fade_enabled:
+            # Animate the text change
+            self._animate_text_crossfade(new_title=display_title, new_artist=display_artist)
         else:
-            self.artist_label.setText("Unknown Artist")
+            # Direct update without animation
+            self.title_a.setText(display_title)
+            self.title_b.setText(display_title)
+            self.artist_a.setText(display_artist)
+            self.artist_b.setText(display_artist)
+            try:
+                self._sync_text_label_sizes()
+                self._update_text_label_geometries()
+            except Exception:
+                pass
+        
+        # Update mini control bar if settings or downloader tab is open
+        if self.settings_tab_open or self.downloader_tab_open:
+            self._update_mini_control_bar()
 
     def update_empty_state(self):
         # Show the empty overlay if there are no tracks and nothing playing
@@ -2032,6 +2355,51 @@ class AmberolPlayer(QMainWindow):
         if hasattr(self, 'art_container'):
             self.art_container.updateGeometry()
             self.art_widget.updateGeometry()
+            # Force the art labels to update their geometry as well
+            self.art_a.updateGeometry()
+            self.art_b.updateGeometry()
+        
+        # Update text label overlay geometries
+        self._update_text_label_geometries()
+    
+    def _update_text_label_geometries(self):
+        """Update the geometry of overlay text labels to match their parent widgets."""
+        try:
+            # Update title label B geometry
+            if hasattr(self, 'title_b') and hasattr(self, 'title_a'):
+                # Get parent widget from title_a
+                parent = self.title_a.parentWidget()
+                if parent:
+                    self.title_b.setGeometry(0, 0, parent.width(), parent.height())
+            
+            # Update artist label B geometry
+            if hasattr(self, 'artist_b') and hasattr(self, 'artist_a'):
+                # Get parent widget from artist_a
+                parent = self.artist_a.parentWidget()
+                if parent:
+                    self.artist_b.setGeometry(0, 0, parent.width(), parent.height())
+        except Exception:
+            pass
+
+    def _sync_text_label_sizes(self):
+        """Ensure stacked title/artist labels share the same height to prevent clipping."""
+        try:
+            if hasattr(self, 'title_a') and hasattr(self, 'title_b'):
+                title_height = max(self.title_a.sizeHint().height(), self.title_b.sizeHint().height())
+                self.title_a.setFixedHeight(title_height)
+                self.title_b.setFixedHeight(title_height)
+                parent = self.title_a.parentWidget()
+                if parent:
+                    parent.setFixedHeight(title_height)
+            if hasattr(self, 'artist_a') and hasattr(self, 'artist_b'):
+                artist_height = max(self.artist_a.sizeHint().height(), self.artist_b.sizeHint().height())
+                self.artist_a.setFixedHeight(artist_height)
+                self.artist_b.setFixedHeight(artist_height)
+                parent = self.artist_a.parentWidget()
+                if parent:
+                    parent.setFixedHeight(artist_height)
+        except Exception:
+            pass
     
     def update_dynamic_background(self, update_id=None):
         # Ensure background has correct size before updating color
@@ -2297,6 +2665,7 @@ class AmberolPlayer(QMainWindow):
 
         # Set new content on the destination label
         if new_pixmap is not None:
+            # ScalableAlbumArtLabel handles automatic scaling on resize
             dest_label.setPixmap(new_pixmap)
             dest_label.setText("")
         elif new_text is not None:
@@ -2340,6 +2709,101 @@ class AmberolPlayer(QMainWindow):
         self.album_art_animation = group
         self.album_art_animation.start()
     
+    def _animate_text_crossfade(self, new_title=None, new_artist=None):
+        """Animate title and artist label crossfade for seamless song changes."""
+        
+        # Stop and reset any existing animation
+        if self.text_animation is not None:
+            try:
+                self.text_animation.finished.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self.text_animation.stop()
+            except Exception:
+                pass
+            self.text_animation = None
+
+        # Resolve source (front) and dest (back) for title labels
+        if self.title_front == 'A':
+            title_source_opacity = self.title_opacity_a
+            title_dest_label = self.title_b
+            title_dest_opacity = self.title_opacity_b
+        else:
+            title_source_opacity = self.title_opacity_b
+            title_dest_label = self.title_a
+            title_dest_opacity = self.title_opacity_a
+
+        # Resolve source and dest for artist labels
+        if self.artist_front == 'A':
+            artist_source_opacity = self.artist_opacity_a
+            artist_dest_label = self.artist_b
+            artist_dest_opacity = self.artist_opacity_b
+        else:
+            artist_source_opacity = self.artist_opacity_b
+            artist_dest_label = self.artist_a
+            artist_dest_opacity = self.artist_opacity_a
+
+        # Reset opacities deterministically
+        title_source_opacity.setOpacity(1.0)
+        title_dest_opacity.setOpacity(0.0)
+        artist_source_opacity.setOpacity(1.0)
+        artist_dest_opacity.setOpacity(0.0)
+
+        # Set new content on destination labels
+        if new_title is not None:
+            title_dest_label.setText(new_title)
+        if new_artist is not None:
+            artist_dest_label.setText(new_artist)
+
+        # Create animations for title fade out and fade in
+        title_fade_out = QPropertyAnimation(title_source_opacity, b"opacity")
+        title_fade_out.setDuration(self.ALBUM_ART_CROSSFADE_DURATION)
+        title_fade_out.setStartValue(1.0)
+        title_fade_out.setEndValue(0.0)
+        title_fade_out.setEasingCurve(QEasingCurve.InOutQuad)
+
+        title_fade_in = QPropertyAnimation(title_dest_opacity, b"opacity")
+        title_fade_in.setDuration(self.ALBUM_ART_CROSSFADE_DURATION)
+        title_fade_in.setStartValue(0.0)
+        title_fade_in.setEndValue(1.0)
+        title_fade_in.setEasingCurve(QEasingCurve.InOutQuad)
+
+        # Create animations for artist fade out and fade in
+        artist_fade_out = QPropertyAnimation(artist_source_opacity, b"opacity")
+        artist_fade_out.setDuration(self.ALBUM_ART_CROSSFADE_DURATION)
+        artist_fade_out.setStartValue(1.0)
+        artist_fade_out.setEndValue(0.0)
+        artist_fade_out.setEasingCurve(QEasingCurve.InOutQuad)
+
+        artist_fade_in = QPropertyAnimation(artist_dest_opacity, b"opacity")
+        artist_fade_in.setDuration(self.ALBUM_ART_CROSSFADE_DURATION)
+        artist_fade_in.setStartValue(0.0)
+        artist_fade_in.setEndValue(1.0)
+        artist_fade_in.setEasingCurve(QEasingCurve.InOutQuad)
+
+        # Group all animations together
+        group = QParallelAnimationGroup()
+        group.addAnimation(title_fade_out)
+        group.addAnimation(title_fade_in)
+        group.addAnimation(artist_fade_out)
+        group.addAnimation(artist_fade_in)
+
+        def on_finished():
+            # Ensure final values are deterministic
+            title_source_opacity.setOpacity(0.0)
+            title_dest_opacity.setOpacity(1.0)
+            artist_source_opacity.setOpacity(0.0)
+            artist_dest_opacity.setOpacity(1.0)
+            # Update explicit front state to destination
+            self.title_front = 'B' if self.title_front == 'A' else 'A'
+            self.artist_front = 'B' if self.artist_front == 'A' else 'A'
+            self.text_animation = None
+
+        group.finished.connect(on_finished)
+        self.text_animation = group
+        self.text_animation.start()
+    
     def toggle_play(self):
         if self.active_player.state() == QMediaPlayer.PlayingState:
             self.active_player.pause()
@@ -2351,15 +2815,136 @@ class AmberolPlayer(QMainWindow):
         self._update_play_icon()
 
     def show_settings_window(self):
-        if self.settings_dialog is None:
-            self.settings_dialog = SettingsDialog(self, initial_value=self.crossfade_duration_secs)
-            self.settings_dialog.crossfadeChanged.connect(self.set_crossfade_duration)
-        if self.settings_dialog.isVisible():
-            self.settings_dialog.close()
+        """Toggle the settings tab on/off"""
+        if self.settings_tab_open:
+            self.close_settings_tab()
+        else:
+            self.open_settings_tab()
+    
+    def open_settings_tab(self):
+        """Open the settings tab and show mini control bar"""
+        self.settings_tab_open = True
+        self.settings_tab.setVisible(True)
+        self.player_view.setVisible(False)
+        self.queue_container.setVisible(False)
+        self.queue_container.setFixedWidth(0)
+        self.overlay_panel.hide()
+        self.mini_control_bar.setVisible(True)
+        
+        # Update mini control bar with current playback state
+        self._update_mini_control_bar()
+    
+    def close_settings_tab(self):
+        """Close the settings tab and hide mini control bar"""
+        self.settings_tab_open = False
+        self.settings_tab.setVisible(False)
+        self.player_view.setVisible(True)
+        self.mini_control_bar.setVisible(False)
+        
+        # Restore queue visibility if it was visible
+        if self.queue_sidebar_visible:
+            try:
+                target_width = int(self.width() * self.gui_config.queue_sidebar_width_percent)
+                self.queue_container.setFixedWidth(target_width)
+            except Exception:
+                self.queue_container.setFixedWidth(0)
+            self.queue_container.setVisible(True)
+
+    def toggle_downloader_tab(self):
+        """Toggle the downloader tab on/off"""
+        if self.downloader_tab_open:
+            self.close_downloader_tab()
+        else:
+            self.open_downloader_tab()
+    
+    def open_downloader_tab(self):
+        """Open the downloader tab and show mini control bar"""
+        # Close settings tab if open
+        if self.settings_tab_open:
+            self.close_settings_tab()
+        
+        self.downloader_tab_open = True
+        self.downloader_tab.setVisible(True)
+        self.player_view.setVisible(False)
+        self.queue_container.setVisible(False)
+        self.queue_container.setFixedWidth(0)
+        self.overlay_panel.hide()
+        self.mini_control_bar.setVisible(True)
+        
+        # Update mini control bar with current playback state
+        self._update_mini_control_bar()
+    
+    def close_downloader_tab(self):
+        """Close the downloader tab and hide mini control bar"""
+        self.downloader_tab_open = False
+        self.downloader_tab.setVisible(False)
+        self.player_view.setVisible(True)
+        self.mini_control_bar.setVisible(False)
+        
+        # Restore queue visibility if it was visible
+        if self.queue_sidebar_visible:
+            try:
+                target_width = int(self.width() * self.gui_config.queue_sidebar_width_percent)
+                self.queue_container.setFixedWidth(target_width)
+            except Exception:
+                self.queue_container.setFixedWidth(0)
+            self.queue_container.setVisible(True)
+
+        # Refresh layout to fix any displaced UI elements
+        try:
+            self._update_art_size()
+        except Exception:
+            pass
+        try:
+            self._update_responsive_layout()
+        except Exception:
+            pass
+
+        # Re-run sizing after the event loop updates geometries (avoids shrunken album art)
+        QTimer.singleShot(0, self._update_art_size)
+    
+    def _update_mini_control_bar(self):
+        """Update mini control bar with current playback information"""
+        if not (self.settings_tab_open or self.downloader_tab_open):
             return
-        self.settings_dialog.show()
-        self.settings_dialog.raise_()
-        self.settings_dialog.activateWindow()
+        
+        # Update play state
+        is_playing = self.active_player.state() == QMediaPlayer.PlayingState
+        self.mini_control_bar.set_play_state(is_playing)
+        
+        # Update shuffle and repeat states
+        self.mini_control_bar.update_shuffle_state(self.shuffle_mode)
+        self.mini_control_bar.update_repeat_state(self.repeat_mode)
+        
+        # Update volume
+        self.mini_control_bar.volume_slider.blockSignals(True)
+        self.mini_control_bar.volume_slider.setValue(self.active_player.volume())
+        self.mini_control_bar.volume_slider.blockSignals(False)
+        self.mini_control_bar.update_volume_icon(self.active_player.volume())
+        
+        # Update song info if available
+        if 0 <= self.current_index < len(self.playlist):
+            file_path = self.playlist[self.current_index]
+            title, artist = self.extract_metadata(file_path)
+            if not title:
+                title = os.path.basename(file_path)
+            
+            # Get or load album art (larger for mini control bar)
+            pixmap = self.album_art_pixmap_cache.get(file_path)
+            if not pixmap:
+                album_art = extract_album_art(file_path)
+                if album_art:
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(album_art)
+                    if not pixmap.isNull():
+                        pixmap = pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        self.album_art_pixmap_cache.set(file_path, pixmap)
+            
+            self.mini_control_bar.set_album_art(pixmap)
+            self.mini_control_bar.set_song_info(title, artist or "")
+        else:
+            self.mini_control_bar.set_song_info("No song playing", "")
+            self.mini_control_bar.set_album_art(None)
 
     def _update_play_icon(self):
         try:
@@ -2452,6 +3037,10 @@ class AmberolPlayer(QMainWindow):
             self.shuffle_seeded = False
             self.shuffle_anchor = None
         self._update_shuffle_icon()
+        
+        # Update mini control bar if settings or downloader tab is open
+        if self.settings_tab_open or self.downloader_tab_open:
+            self.mini_control_bar.update_shuffle_state(self.shuffle_mode)
 
     def _update_shuffle_icon(self):
         try:
@@ -2462,6 +3051,10 @@ class AmberolPlayer(QMainWindow):
     def toggle_repeat(self):
         self.repeat_mode = (self.repeat_mode + 1) % 3
         self._update_repeat_icon()
+        
+        # Update mini control bar if settings or downloader tab is open
+        if self.settings_tab_open or self.downloader_tab_open:
+            self.mini_control_bar.update_repeat_state(self.repeat_mode)
 
     def _update_repeat_icon(self):
         try:
@@ -2483,22 +3076,58 @@ class AmberolPlayer(QMainWindow):
     def change_volume(self, value):
         self.active_player.setVolume(value)
         self.preload_player.setVolume(value)
+        self.save_settings()
+    
+    def _on_mini_volume_changed(self, value):
+        """Handle volume change from mini control bar"""
+        self.change_volume(value)
+        # Update main volume slider
+        if hasattr(self, 'volume_slider'):
+            self.volume_slider.blockSignals(True)
+            self.volume_slider.setValue(value)
+            self.volume_slider.blockSignals(False)
+        self._update_volume_icon(value)
+    
+    def _update_volume_icon(self, value):
+        """Update volume icon based on slider value"""
+        if value == 0:
+            icon = self.icon_volume_none
+        elif value <= 50:
+            icon = self.icon_volume_low
+        else:
+            icon = self.icon_volume_high
+        
+        # Update main control bar volume icon
+        if hasattr(self, 'volume_icon'):
+            self.volume_icon.setPixmap(icon.pixmap(24, 24))
+        
+        # Update mini control bar volume icon if visible
+        if hasattr(self, 'mini_control_bar') and self.mini_control_bar.isVisible():
+            self.mini_control_bar.update_volume_icon(value)
 
     def set_crossfade_duration(self, seconds):
         seconds = max(0, min(12, int(seconds)))
         self.crossfade_duration_secs = seconds
-        if self.settings_dialog:
+        self.save_settings()
+        if self.settings_tab:
             try:
-                self.settings_dialog.crossfade_slider.setValue(seconds)
+                self.settings_tab.crossfade_slider.blockSignals(True)
+                self.settings_tab.crossfade_slider.setValue(seconds)
+                self.settings_tab.crossfade_slider.blockSignals(False)
             except Exception:
                 pass
             try:
-                self.settings_dialog.value_label.setText(f"{seconds} s")
+                self.settings_tab.value_label.setText(f"{seconds} s")
             except Exception:
                 pass
         # Cancel any in-flight crossfade if duration is set to zero mid-transition
         if seconds == 0 and self.crossfade_in_progress:
             self._cancel_crossfade()
+
+    def set_text_fade_enabled(self, enabled):
+        """Toggle text fade animation setting"""
+        self.text_fade_enabled = enabled
+        self.save_settings()
 
     def _cancel_crossfade(self):
         if self.crossfade_timer:
@@ -2681,6 +3310,11 @@ class AmberolPlayer(QMainWindow):
                 self._update_play_icon()
             else:
                 self._update_play_icon()
+            
+            # Update mini control bar play state if settings or downloader tab is open
+            if self.settings_tab_open or self.downloader_tab_open:
+                is_playing = state == QMediaPlayer.PlayingState
+                self.mini_control_bar.set_play_state(is_playing)
         except Exception:
             pass
 
@@ -2906,12 +3540,19 @@ class AmberolPlayer(QMainWindow):
                 self.shuffle_mode = data.get('shuffle_mode', False)
                 self.repeat_mode = data.get('repeat_mode', 0)
                 self.saved_folder = data.get('saved_folder', None)
+                self.text_fade_enabled = data.get('text_fade_enabled', True)
                 vol = data.get('volume', 50)
                 try:
                     self.active_player.setVolume(vol)
                     self.preload_player.setVolume(vol)
                     if hasattr(self, 'volume_slider'):
                         self.volume_slider.setValue(vol)
+                        self._update_volume_icon(vol)
+                    if hasattr(self, 'mini_control_bar'):
+                        self.mini_control_bar.volume_slider.blockSignals(True)
+                        self.mini_control_bar.volume_slider.setValue(vol)
+                        self.mini_control_bar.volume_slider.blockSignals(False)
+                        self.mini_control_bar.update_volume_icon(vol)
                 except Exception:
                     pass
                 # Don't restore playlist - only saved_folder is remembered
@@ -2919,10 +3560,12 @@ class AmberolPlayer(QMainWindow):
             else:
                 self.shuffle_mode = False
                 self.repeat_mode = 0
+                self.text_fade_enabled = True
         except Exception as e:
             print("Failed to load settings:", e)
             self.shuffle_mode = False
             self.repeat_mode = 0
+            self.text_fade_enabled = True
     
     def save_settings(self):
         """Save current settings to file"""
@@ -2931,7 +3574,8 @@ class AmberolPlayer(QMainWindow):
                 'shuffle_mode': self.shuffle_mode,
                 'repeat_mode': self.repeat_mode,
                 'volume': self.active_player.volume(),
-                'saved_folder': self.saved_folder
+                'saved_folder': self.saved_folder,
+                'text_fade_enabled': self.text_fade_enabled
             }
             # Don't save playlist - only saved_folder is remembered
             # Files added via "Add File" are not persisted, app resets on close

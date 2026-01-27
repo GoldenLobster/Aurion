@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import QWidget, QToolButton, QPushButton
 from PyQt5.QtCore import Qt, QRect, QEvent, QCursor
-from PyQt5.QtGui import QCursor as QCursorGUI
+from src.config.gui_config import get_config
 
 
 class FramelessWindowEventHandler:
@@ -11,10 +11,12 @@ class FramelessWindowEventHandler:
     def _is_in_header_area(self, global_pos):
         """Check if position is in the draggable header area"""
         local_pos = self.mapFromGlobal(global_pos)
-        header_height = 230
+        config = get_config()
+        header_height = config.header_height
         window_width = self.width()
-        right_side_width = 200
-        return local_pos.y() < header_height and local_pos.x() < (window_width - right_side_width - 20)
+        right_side_width = config.header_right_side_width
+        right_side_padding = config.header_right_side_padding
+        return local_pos.y() < header_height and local_pos.x() < (window_width - right_side_width - right_side_padding)
 
     def _get_resize_region(self, global_pos):
         """Determine which edge/corner the cursor is in for resizing"""

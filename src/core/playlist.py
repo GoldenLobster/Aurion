@@ -3,8 +3,7 @@ Playlist and queue management for the music player.
 Handles adding, removing, filtering, and organizing tracks.
 """
 
-from pathlib import Path
-from cache import LRUCache
+from src.core.cache import LRUCache
 
 
 class PlaylistManager:
@@ -64,24 +63,8 @@ class PlaylistManager:
         # Purge playlist
         self.playlist = [p for p in self.playlist if p not in remove_set]
         
-        # Clear duration cache
-        for p in list(self.track_durations.keys()):
-            if p in remove_set:
-                self.track_durations.pop(p, None)
-        
-        # Rebuild art caches without removed items
-        if remove_set:
-            old_pixmap_cache = self.album_art_pixmap_cache
-            self.album_art_pixmap_cache = LRUCache(old_pixmap_cache.max_size)
-            for key, val in old_pixmap_cache.cache.items():
-                if key not in remove_set:
-                    self.album_art_pixmap_cache.set(key, val)
-            
-            old_color_cache = self.dominant_color_cache
-            self.dominant_color_cache = LRUCache(old_color_cache.max_size)
-            for key, val in old_color_cache.cache.items():
-                if key not in remove_set:
-                    self.dominant_color_cache.set(key, val)
+        for path in remove_set:
+            self._clear_track_caches(path)
         
         # Reset playback if removing current track
         if removing_current:
@@ -128,4 +111,5 @@ class PlaylistManager:
     def _clear_track_caches(self, file_path):
         """Clear all cached data for a track"""
         self.track_durations.pop(file_path, None)
-        # LRUCache doesn't expose direct deletion, just skip it
+        self.album_art_pixmap_cache.pop(file_path, None)
+        self.dominant_color_cache.pop(file_path, None)

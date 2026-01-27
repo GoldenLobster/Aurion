@@ -4,9 +4,43 @@ Includes waveform display, queue items, and background rendering.
 """
 
 import random
-from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QListWidget, QGraphicsOpacityEffect
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtProperty, QSize
+from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QListWidget
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtProperty
 from PyQt5.QtGui import QPainter, QColor, QPen, QPixmap, QLinearGradient
+
+
+class ScalableAlbumArtLabel(QLabel):
+    """Label that rescales album art pixmap dynamically when resized"""
+    
+    def __init__(self):
+        super().__init__()
+        self._original_pixmap = None
+    
+    def setPixmap(self, pixmap):
+        """Override to store original pixmap and scale it"""
+        if pixmap and not pixmap.isNull():
+            self._original_pixmap = pixmap
+            self._rescale_pixmap()
+        else:
+            self._original_pixmap = None
+            super().setPixmap(QPixmap())
+    
+    def _rescale_pixmap(self):
+        """Scale stored pixmap to current label size"""
+        if self._original_pixmap is not None:
+            label_size = self.size()
+            if label_size.width() > 0 and label_size.height() > 0:
+                scaled = self._original_pixmap.scaled(
+                    label_size, 
+                    Qt.KeepAspectRatioByExpanding, 
+                    Qt.SmoothTransformation
+                )
+                super().setPixmap(scaled)
+    
+    def resizeEvent(self, event):
+        """Handle resize events to rescale pixmap"""
+        super().resizeEvent(event)
+        self._rescale_pixmap()
 
 
 class WaveformWidget(QWidget):
@@ -166,9 +200,8 @@ class QueueItemWidget(QWidget):
         layout.setSpacing(12)
         
         # Album art
-        self.art_label = QLabel()
+        self.art_label = ScalableAlbumArtLabel()
         self.art_label.setFixedSize(60, 60)
-        self.art_label.setScaledContents(True)
         self.art_label.setStyleSheet("""
             background-color: rgba(255, 255, 255, 0.1);
             border-radius: 8px;
@@ -221,8 +254,8 @@ class QueueItemWidget(QWidget):
     def set_album_art(self, pixmap):
         """Set album art pixmap"""
         if pixmap and not pixmap.isNull():
-            scaled = pixmap.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.art_label.setPixmap(scaled)
+            # ScalableAlbumArtLabel handles automatic scaling on resize
+            self.art_label.setPixmap(pixmap)
             self.art_label.setText("")
         else:
             self.art_label.setText("🎵")
@@ -277,6 +310,20 @@ class QueueWidget(QListWidget):
             QListWidget::item:focus {
                 outline: none;
                 background-color: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: transparent;
+                width: 0px;
+                border: none;
+            }
+            QScrollBar::handle:vertical {
+                background-color: transparent;
+                border: none;
+            }
+            QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical {
+                background-color: transparent;
+                border: none;
+                height: 0px;
             }
         """)
         self.setVerticalScrollMode(QListWidget.ScrollPerPixel)

@@ -5,8 +5,6 @@ Dialog for locating ffmpeg when system-installed version is not found.
 from pathlib import Path
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QFileDialog, QTextEdit)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
 
 
 class FFmpegLocatorDialog(QDialog):

@@ -39,12 +39,27 @@ def compute_waveform(file_path, target_samples=1000):
                 if not frames:
                     break
                 
-                # Unpack audio samples
+                # Decode audio samples based on bit depth
                 sample_count = len(frames) // (sample_width * n_channels)
-                samples = struct.unpack(
-                    f'<{sample_count * n_channels}h',
-                    frames[:sample_count * sample_width * n_channels]
-                )
+                frames = frames[:sample_count * sample_width * n_channels]
+                samples = []
+
+                if sample_width == 1:
+                    # 8-bit PCM is unsigned; center it at zero for RMS
+                    raw_samples = struct.unpack(f'<{sample_count * n_channels}B', frames)
+                    samples = [s - 128 for s in raw_samples]
+                elif sample_width == 2:
+                    samples = struct.unpack(f'<{sample_count * n_channels}h', frames)
+                else:
+                    # Handle 24-bit or 32-bit samples without extra deps
+                    step = sample_width
+                    total = sample_count * n_channels
+                    for idx in range(total):
+                        offset = idx * step
+                        chunk = frames[offset:offset + step]
+                        if len(chunk) < step:
+                            break
+                        samples.append(int.from_bytes(chunk, byteorder='little', signed=True))
                 
                 # Calculate RMS (root mean square) for this chunk
                 if samples:
@@ -54,7 +69,7 @@ def compute_waveform(file_path, target_samples=1000):
             
             return amplitudes
             
-    except Exception:
+    except (wave.Error, OSError, struct.error, ValueError):
         return []
 
 
@@ -115,7 +130,7 @@ def get_dominant_color(image_data):
             
             return QColor(r_avg, g_avg, b_avg)
             
-    except Exception:
+    except (OSError, ValueError, TypeError, AttributeError):
         pass
     
     return None

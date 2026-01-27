@@ -50,6 +50,14 @@ class LRUCache:
         # If cache exceeds max size, remove oldest (first) item
         if len(self.cache) > self.max_size:
             self.cache.popitem(last=False)
+
+    def pop(self, key, default=None):
+        """Remove a key from the cache if present."""
+        return self.cache.pop(key, default)
+
+    def __len__(self):
+        """Return the current cache size."""
+        return len(self.cache)
     
     def clear(self):
         """Clear all items from cache"""

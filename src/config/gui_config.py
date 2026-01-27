@@ -4,7 +4,6 @@ All hardcoded GUI elements are now configurable based on the user's display prop
 """
 
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QSize
 from dataclasses import dataclass
 
 
@@ -42,6 +41,8 @@ class GUIConfig:
     header_margin_top: int
     header_margin_bottom: int
     button_spacing: int
+    header_right_side_width: int
+    header_right_side_padding: int
     
     # Resize margin for frameless window
     resize_margin: int
@@ -84,7 +85,7 @@ def calculate_gui_config() -> GUIConfig:
     
     # Minimum window size (responsive for smaller screens)
     min_width = max(600, int(screen_width * 0.4))
-    min_height = max(800, int(screen_height * 0.5))
+    min_height = max(850, int(screen_height * 0.5))
     
     # Sidebar/overlay threshold - switch to overlay for narrower windows
     # Lower threshold so sidebar appears more easily (900px instead of 1100px)
@@ -111,6 +112,8 @@ def calculate_gui_config() -> GUIConfig:
     header_margin = int(15 * dpi_scale)
     button_spacing = int(15 * dpi_scale)
     resize_margin = int(8 * dpi_scale)
+    header_right_side_width = int(200 * dpi_scale)
+    header_right_side_padding = int(20 * dpi_scale)
     
     return GUIConfig(
         initial_window_width=initial_width,
@@ -136,6 +139,8 @@ def calculate_gui_config() -> GUIConfig:
         header_margin_top=int(10 * dpi_scale),
         header_margin_bottom=int(10 * dpi_scale),
         button_spacing=button_spacing,
+        header_right_side_width=header_right_side_width,
+        header_right_side_padding=header_right_side_padding,
         
         resize_margin=resize_margin,
         
@@ -150,7 +155,7 @@ def _get_default_config() -> GUIConfig:
         initial_window_width=1056,
         initial_window_height=1130,
         min_window_width=700,
-        min_window_height=1130,
+        min_window_height=1180,
         
         sidebar_overlay_threshold_width=900,
         sidebar_overlay_threshold_height=900,
@@ -170,6 +175,8 @@ def _get_default_config() -> GUIConfig:
         header_margin_top=10,
         header_margin_bottom=10,
         button_spacing=15,
+        header_right_side_width=200,
+        header_right_side_padding=20,
         
         resize_margin=8,
         

@@ -4,8 +4,12 @@ Handles saving and loading user preferences.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsManager:
@@ -41,7 +45,8 @@ class SettingsManager:
                     saved = json.load(f)
                     # Merge with defaults (in case new keys were added)
                     self.settings.update(saved)
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("Failed to load settings from %s: %s", self.settings_file, exc)
             # If loading fails, use defaults
             self.settings = dict(self.DEFAULT_SETTINGS)
     
@@ -50,8 +55,8 @@ class SettingsManager:
         try:
             with open(self.settings_file, 'w') as f:
                 json.dump(self.settings, f, indent=2)
-        except Exception:
-            pass  # Silently fail if can't save
+        except (OSError, TypeError, ValueError) as exc:
+            logger.warning("Failed to save settings to %s: %s", self.settings_file, exc)
     
     def get(self, key, default=None):
         """
