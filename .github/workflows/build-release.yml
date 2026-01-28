@@ -9,7 +9,7 @@ on:
 
 # MANUAL VERSIONING: Change this value to update your release version
 env:
-  APP_VERSION: "1.0.1"
+  APP_VERSION: "v2.0.0"
 
 jobs:
   build-windows:
